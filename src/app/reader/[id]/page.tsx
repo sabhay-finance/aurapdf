@@ -517,9 +517,11 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         documentId={documentId}
         documentTitle={document.title}
         currentPage={currentPage}
+        isTwoPage={isTwoPage}
         selectedText={contextSelectedText}
         initialQuery={initialAIQuery}
         onNavigateToPage={(p) => saveReadingPosition(p)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Linked Study Notes Panel */}

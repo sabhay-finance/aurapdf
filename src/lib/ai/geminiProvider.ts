@@ -8,6 +8,7 @@ import {
   ExplanationLevel,
 } from './types';
 import { LocalEngineProvider } from './localEngine';
+import { cleanExtractedText } from '../pdf/textCleaner';
 
 export class GeminiProvider implements AIProvider {
   name = 'Google Gemini 2.0';
@@ -17,6 +18,39 @@ export class GeminiProvider implements AIProvider {
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
     this.fallback = new LocalEngineProvider();
+  }
+
+  private async callGeminiApi(prompt: string, maxTokens = 1200): Promise<string | null> {
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    for (const model of models) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: maxTokens,
+              },
+            }),
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return text.trim();
+        } else {
+          console.warn(`Gemini model ${model} failed:`, res.status, await res.text());
+        }
+      } catch (err) {
+        console.warn(`Gemini model ${model} network error:`, err);
+      }
+    }
+    return null;
   }
 
   async generateAnswer(params: {
@@ -33,59 +67,45 @@ export class GeminiProvider implements AIProvider {
 
     try {
       const contextBlocks = params.chunks
-        .map((c) => `[Document Page ${c.page_number} (${c.section || 'General'})]:\n${c.text}`)
+        .map((c) => `[Document Page ${c.page_number} (${c.section || 'General'})]:\n${cleanExtractedText(c.text)}`)
         .join('\n\n');
 
-      const systemPrompt = `You are a premium AI tutor for a student studying a PDF textbook titled "${params.documentTitle}".
-Follow these rules strictly:
-1. Ground every statement directly in the provided document excerpts.
-2. If the excerpts do not contain the answer, say "The provided document pages do not contain enough information to answer this question."
-3. Always cite the exact page number like "[Source: Page X]" whenever presenting a fact or formula.
-4. Keep the explanation level suited to: ${params.explanationLevel || 'standard'}.
-5. Selected text from student: ${params.selectedText ? `"${params.selectedText}"` : 'None'}.`;
+      const systemPrompt = `You are AuraPDF's master academic tutor for a student studying "${params.documentTitle}".
+Follow these pedagogical guidelines strictly:
+1. STRUCTURE & READABILITY:
+   - Begin with a clear 1-2 sentence core concept summary.
+   - Use clear markdown sections: "### 📖 Concept Breakdown", "#### 🔑 Key Definitions", "#### ⚙️ Mechanics & Decision Rules", "#### 💡 Exam Takeaway & Traps".
+   - Bold key terms on first mention.
+2. GROUNDING:
+   - Ground every statement directly in the provided textbook excerpts.
+   - Always reference exact pages like "[Page X]" whenever presenting facts, formulas, or rules.
+   - If the student asks to explain a page, synthesize all the major concepts, definitions, and rules on that page.
+3. ADAPT TO LEVEL (${params.explanationLevel || 'standard'}):
+   - simple: Plain English, intuitive relatable analogies, minimal jargon.
+   - standard: Professional academic explanation balancing rigor and intuition.
+   - exam: Focus on exam-tested definitions, calculation formulas, traps (e.g. short-run vs long-run shutdown, ATC vs AVC).
+4. Selected text context: ${params.selectedText ? `"${params.selectedText}"` : 'None'}.`;
 
-      const userContent = `Document Context:\n${contextBlocks}\n\nStudent Question: ${params.query}`;
+      const userContent = `Textbook Context:\n${contextBlocks}\n\nStudent Inquiry: ${params.query}`;
+      const text = await this.callGeminiApi(`${systemPrompt}\n\n${userContent}`, 1400);
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${systemPrompt}\n\n${userContent}` }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 1000,
-            },
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        console.warn('Gemini API call failed, falling back to local engine', await res.text());
+      if (!text) {
         return this.fallback.generateAnswer(params);
       }
-
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       const citations: CitationItem[] = params.chunks.map((c) => ({
         page_number: c.page_number,
         section: c.section || undefined,
-        snippet: c.text.slice(0, 100),
+        snippet: cleanExtractedText(c.text).slice(0, 120),
       }));
 
       return {
         answer: text,
         citations,
         suggested_followups: [
-          `Can you break down the mathematical derivation?`,
-          `Give a real-world scenario from this section`,
+          `Can you break down the mathematical derivation or formula?`,
+          `Give a practical exam calculation scenario`,
+          `Create 3 flashcards for this concept`,
         ],
       };
     } catch (err) {
@@ -105,26 +125,12 @@ Follow these rules strictly:
     }
 
     try {
-      const context = params.chunks.map((c) => `[Page ${c.page_number}]: ${c.text}`).join('\n\n');
-      const prompt = `You are an expert textbook tutor. Provide a concise, high-yield summary of the following document excerpt from "${params.title}" (focusing on ${params.scope} level). Group key concepts into clear bullet points.
+      const context = params.chunks.map((c) => `[Page ${c.page_number}]: ${cleanExtractedText(c.text)}`).join('\n\n');
+      const prompt = `You are an expert academic tutor. Provide a concise, high-yield summary of the following document excerpt from "${params.title}" (focusing on ${params.scope} level). Group key concepts into clear bullet points with bold headers.
 Document Excerpts:
 ${context}`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
-          }),
-        }
-      );
-
-      if (!res.ok) return this.fallback.summarize(params);
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = await this.callGeminiApi(prompt, 900);
       if (!text) return this.fallback.summarize(params);
 
       return {
@@ -132,7 +138,6 @@ ${context}`;
         citations: params.chunks.map((c) => ({ page_number: c.page_number, section: c.section || undefined })),
       };
     } catch (err) {
-      console.error('Gemini summarize error:', err);
       return this.fallback.summarize(params);
     }
   }
@@ -149,34 +154,19 @@ ${context}`;
 
     try {
       const prompt = `You are an expert academic tutor. Explain the following concept/passage in "${params.mode}" mode.
-Selected text: "${params.selectedText}"
-Context from Page ${params.pageNumber}: "${params.surroundingText || params.selectedText}"
+Selected text: "${cleanExtractedText(params.selectedText)}"
+Context from Page ${params.pageNumber}: "${cleanExtractedText(params.surroundingText || params.selectedText)}"
 Mode requirement:
 ${params.mode === 'simple' ? 'Explain in plain English with an intuitive analogy.' : params.mode === 'example' ? 'Provide a concrete, realistic real-world case study or numerical example.' : 'Provide a rigorous breakdown of key definitions, mechanics, and exam implications.'}`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
-          }),
-        }
-      );
-
-      if (!res.ok) return this.fallback.explainSelection(params);
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = await this.callGeminiApi(prompt, 900);
       if (!text) return this.fallback.explainSelection(params);
 
       return {
         explanation: text,
-        citations: [{ page_number: params.pageNumber, snippet: params.selectedText }],
+        citations: [{ page_number: params.pageNumber, snippet: cleanExtractedText(params.selectedText) }],
       };
     } catch (err) {
-      console.error('Gemini explain error:', err);
       return this.fallback.explainSelection(params);
     }
   }
@@ -191,7 +181,7 @@ ${params.mode === 'simple' ? 'Explain in plain English with an intuitive analogy
 
     try {
       const count = params.count || 3;
-      const context = params.chunks.map((c) => `[Page ${c.page_number} (${c.section || 'Concept'})]: ${c.text}`).join('\n\n');
+      const context = params.chunks.map((c) => `[Page ${c.page_number} (${c.section || 'Concept'})]: ${cleanExtractedText(c.text)}`).join('\n\n');
       const prompt = `Extract exactly ${count} active-recall flashcards from the following textbook text. Return ONLY a valid JSON array matching this exact schema:
 [
   {
@@ -207,24 +197,11 @@ Do not include markdown codeblocks or any commentary, output pure JSON only.
 Document text:
 ${context}`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
-          }),
-        }
-      );
+      const rawText = await this.callGeminiApi(prompt, 1200);
+      if (!rawText) return this.fallback.generateFlashcards(params);
 
-      if (!res.ok) return this.fallback.generateFlashcards(params);
-      const data = await res.json();
-      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      rawText = rawText.replace(/```json\n?|```/g, '').trim();
-
-      const parsed = JSON.parse(rawText);
+      const cleanedJson = rawText.replace(/```json\n?|```/g, '').trim();
+      const parsed = JSON.parse(cleanedJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map((item) => ({
           question: String(item.question || 'Concept Recall'),
@@ -236,7 +213,6 @@ ${context}`;
       }
       return this.fallback.generateFlashcards(params);
     } catch (err) {
-      console.error('Gemini generateFlashcards error:', err);
       return this.fallback.generateFlashcards(params);
     }
   }
@@ -252,7 +228,7 @@ ${context}`;
 
     try {
       const count = params.count || 2;
-      const context = params.chunks.map((c) => `[Page ${c.page_number}]: ${c.text}`).join('\n\n');
+      const context = params.chunks.map((c) => `[Page ${c.page_number}]: ${cleanExtractedText(c.text)}`).join('\n\n');
       const prompt = `Generate ${count} high-quality 4-option multiple choice practice questions testing comprehension of the following text (difficulty: ${params.difficulty || 'standard'}). Return ONLY a valid JSON array of objects with the exact schema:
 [
   {
@@ -274,24 +250,11 @@ Do not include markdown formatting or backticks, output pure JSON only.
 Document text:
 ${context}`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
-          }),
-        }
-      );
+      const rawText = await this.callGeminiApi(prompt, 1500);
+      if (!rawText) return this.fallback.generateQuestions(params);
 
-      if (!res.ok) return this.fallback.generateQuestions(params);
-      const data = await res.json();
-      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      rawText = rawText.replace(/```json\n?|```/g, '').trim();
-
-      const parsed = JSON.parse(rawText);
+      const cleanedJson = rawText.replace(/```json\n?|```/g, '').trim();
+      const parsed = JSON.parse(cleanedJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map((item) => ({
           question: String(item.question),
@@ -304,7 +267,6 @@ ${context}`;
       }
       return this.fallback.generateQuestions(params);
     } catch (err) {
-      console.error('Gemini generateQuestions error:', err);
       return this.fallback.generateQuestions(params);
     }
   }

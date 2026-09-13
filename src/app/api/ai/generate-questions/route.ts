@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       take: 6,
     });
 
-    const ai = getAIProvider();
+    const ai = getAIProvider(apiKey, provider);
     const questions = await ai.generateQuestions({
       chunks: chunks.map((c) => ({
         page_number: c.page_number,

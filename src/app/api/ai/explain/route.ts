@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const ai = getAIProvider();
+    const ai = getAIProvider(apiKey, provider);
     const result = await ai.explainSelection({
       selectedText: selected_text,
       pageNumber: Number(page_number),

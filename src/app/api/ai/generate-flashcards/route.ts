@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       ];
     }
 
-    const ai = getAIProvider();
+    const ai = getAIProvider(apiKey, provider);
     const generated = await ai.generateFlashcards({
       chunks: chunks.map((c) => ({
         page_number: c.page_number,

@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     // Retrieve relevant chunks with current page priority
     const relevantChunks = retrieveRelevantChunks(query, doc.chunks, current_page, 4);
 
-    const aiProvider = getAIProvider();
+    const aiProvider = getAIProvider(apiKey, provider);
     const result = await aiProvider.generateAnswer({
       query,
       documentTitle: doc.title,

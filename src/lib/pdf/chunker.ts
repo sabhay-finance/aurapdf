@@ -1,3 +1,5 @@
+import { cleanExtractedText } from './textCleaner';
+
 export interface RawPageText {
   pageNumber: number;
   text: string;
@@ -14,13 +16,14 @@ export interface ChunkResult {
 
 /**
  * Splits document page text into page-aware semantic chunks.
- * Retains page_number, section heading, and clean text boundaries.
+ * Cleans OCR artifacts and retains page_number, section heading, and clean text boundaries.
  */
-export function chunkPageText(pages: RawPageText[], maxChunkLength = 600): ChunkResult[] {
+export function chunkPageText(pages: RawPageText[], maxChunkLength = 700): ChunkResult[] {
   const results: ChunkResult[] = [];
 
   for (const page of pages) {
-    const rawLines = page.text
+    const cleanedPageText = cleanExtractedText(page.text || '');
+    const rawLines = cleanedPageText
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
@@ -30,12 +33,18 @@ export function chunkPageText(pages: RawPageText[], maxChunkLength = 600): Chunk
     let chunkIndex = 0;
 
     for (const line of rawLines) {
-      // Detect potential section headers (short, bold, or starting with Chapter/Topic)
-      if (
-        (line.startsWith('Chapter') || line.startsWith('Topic') || line.startsWith('Volume') || line.endsWith(':')) &&
-        line.length < 75
-      ) {
-        currentSection = line.replace(/:$/, '');
+      // Detect potential section headers (all-caps, short titles, Chapter/Topic, or colon-ended)
+      const isHeader =
+        (line.startsWith('Chapter') ||
+          line.startsWith('Topic') ||
+          line.startsWith('Volume') ||
+          line.endsWith(':') ||
+          (line.length < 50 && line === line.toUpperCase() && /[A-Z]/.test(line))) &&
+        line.length > 3 &&
+        line.length < 80;
+
+      if (isHeader) {
+        currentSection = line.replace(/:$/, '').trim();
       }
 
       if (buffer.length + line.length > maxChunkLength && buffer.length > 100) {
