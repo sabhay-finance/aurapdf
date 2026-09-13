@@ -6,6 +6,7 @@ import { stat, open } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { Readable } from 'stream';
 import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
+import { resolveDocumentFilePath } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
@@ -42,14 +43,11 @@ export async function GET(
     }
 
     // 3. Resolve private storage path
-    let filePath: string;
-    const filename = path.basename(document.file_url);
-
-    if (document.file_url.startsWith('/samples/')) {
-      filePath = path.join(process.cwd(), 'public', 'samples', filename);
-    } else {
-      filePath = path.join(process.cwd(), 'storage', 'uploads', filename);
+    const resolvedPath = resolveDocumentFilePath(document.file_url);
+    if (!resolvedPath) {
+      return new NextResponse('Stored document file not found', { status: 404 });
     }
+    const filePath = resolvedPath;
 
     let fileStat;
     try {

@@ -23,11 +23,35 @@ export interface StorageStreamResult {
   contentType: string;
 }
 
+export function getStorageUploadsDir(): string {
+  if (process.env.VERCEL || process.env.VERCEL_ENV) {
+    return path.join('/tmp', 'storage', 'uploads');
+  }
+  return path.join(process.cwd(), 'storage', 'uploads');
+}
+
+export function resolveDocumentFilePath(fileUrl: string): string | null {
+  const filename = path.basename(fileUrl);
+  const candidates = [
+    path.join('/tmp', 'storage', 'uploads', filename),
+    path.join(process.cwd(), 'storage', 'uploads', filename),
+    path.join(process.cwd(), 'public', 'samples', filename),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 class LocalStorageProvider {
   private baseDir: string;
 
   constructor() {
-    this.baseDir = path.join(process.cwd(), 'storage', 'uploads');
+    this.baseDir = getStorageUploadsDir();
   }
 
   private async ensureDir() {
@@ -42,7 +66,8 @@ class LocalStorageProvider {
   }
 
   async getStream(key: string, range?: { start: number; end: number }): Promise<StorageStreamResult> {
-    const filePath = path.join(this.baseDir, key);
+    const resolved = resolveDocumentFilePath(key);
+    const filePath = resolved || path.join(this.baseDir, key);
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${key}`);
     }
@@ -72,7 +97,8 @@ class LocalStorageProvider {
   }
 
   async delete(key: string): Promise<boolean> {
-    const filePath = path.join(this.baseDir, key);
+    const resolved = resolveDocumentFilePath(key);
+    const filePath = resolved || path.join(this.baseDir, key);
     if (fs.existsSync(filePath)) {
       await unlink(filePath).catch(() => {});
       return true;
