@@ -1,0 +1,9 @@
+storage/
+storage/**
+public/uploads/
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
+.next/
+*.local
