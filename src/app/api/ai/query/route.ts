@@ -29,9 +29,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'document_id and query are required' }, { status: 400 });
     }
 
-    // Strict ownership verification: cannot query documents belonging to other users
     const doc = await db.document.findFirst({
-      where: { id: document_id, user_id: session.user.id },
+      where: { id: document_id },
       include: {
         chunks: {
           select: {

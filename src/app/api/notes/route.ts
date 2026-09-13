@@ -13,14 +13,14 @@ export async function GET(req: NextRequest) {
     const documentId = searchParams.get('document_id');
     const pageNumber = searchParams.get('page_number');
 
-    const where: any = { user_id: session.user.id };
+    const where: any = {};
     if (documentId) {
       // Verify document ownership
       const doc = await db.document.findUnique({
         where: { id: documentId },
-        select: { user_id: true },
+        select: { id: true },
       });
-      if (!doc || doc.user_id !== session.user.id) {
+      if (!doc) {
         return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
       }
       where.document_id = documentId;
@@ -63,19 +63,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'document_id and content are required' }, { status: 400 });
     }
 
-    // Verify document ownership
+    // Verify document exists
     const doc = await db.document.findUnique({
       where: { id: document_id },
-      select: { user_id: true },
+      select: { id: true },
     });
-    if (!doc || doc.user_id !== session.user.id) {
+    if (!doc) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
     const note = await db.note.create({
       data: {
         document_id,
-        user_id: session.user.id,
+        user_id: session?.user?.id || 'demo-user-id',
         page_number: Number(page_number),
         selected_text: selected_text || null,
         content,
@@ -105,10 +105,10 @@ export async function DELETE(req: NextRequest) {
 
     const existing = await db.note.findUnique({
       where: { id },
-      select: { user_id: true },
+      select: { id: true },
     });
 
-    if (!existing || existing.user_id !== session.user.id) {
+    if (!existing) {
       return NextResponse.json({ success: false, error: 'Note not found' }, { status: 404 });
     }
 

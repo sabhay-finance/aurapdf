@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Moon, Sun, Monitor, Key, Sparkles, Sliders, Database, Download, User, LogOut } from 'lucide-react';
+import { X, Moon, Sun, Monitor, Key, Sparkles, Sliders, Database, Download, User } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { GlassButton } from './GlassButton';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -254,15 +254,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   </div>
                 </div>
               </div>
-              <GlassButton
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut({ callbackUrl: '/login' })}
-                className="text-xs text-red-600 dark:text-red-400 hover:bg-red-500/10 cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
-              </GlassButton>
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Open Access</span>
+              </div>
             </div>
           </div>
 

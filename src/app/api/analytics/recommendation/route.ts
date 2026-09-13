@@ -19,9 +19,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const minutes = Number(searchParams.get('minutes')) || 45;
 
-    // Get the most recent document owned by authenticated user
+    // Get the most recent document
     const doc = await db.document.findFirst({
-      where: { user_id: userId },
       orderBy: { last_opened_at: 'desc' },
     });
 
@@ -35,7 +34,6 @@ export async function GET(req: NextRequest) {
     // Get attempts for this document
     const attempts = await db.attempt.findMany({
       where: {
-        user_id: userId,
         question: { document_id: doc.id },
       },
       include: {

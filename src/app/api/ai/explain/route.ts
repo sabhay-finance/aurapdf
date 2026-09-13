@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     let surroundingText = selected_text;
     if (document_id) {
       const doc = await db.document.findFirst({
-        where: { id: document_id, user_id: session.user.id },
+        where: { id: document_id },
       });
       if (!doc) {
         return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });

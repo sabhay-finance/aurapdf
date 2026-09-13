@@ -24,9 +24,9 @@ export async function GET(req: NextRequest) {
     if (documentId) {
       const doc = await db.document.findUnique({
         where: { id: documentId },
-        select: { user_id: true },
+        select: { id: true },
       });
-      if (!doc || doc.user_id !== session.user.id) {
+      if (!doc) {
         return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
       }
       where.document_id = documentId;

@@ -17,11 +17,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const documentId = searchParams.get('document_id');
 
-    const where: any = { user_id: session.user.id };
+    const where: any = {};
     if (documentId) {
-      // Verify document ownership
+      // Verify document exists
       const doc = await db.document.findFirst({
-        where: { id: documentId, user_id: session.user.id },
+        where: { id: documentId },
       });
       if (!doc) {
         return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });

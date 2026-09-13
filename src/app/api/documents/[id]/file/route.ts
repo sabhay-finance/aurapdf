@@ -37,8 +37,7 @@ export async function GET(
       },
     });
 
-    if (!document || document.user_id !== session.user.id) {
-      // Return 404 rather than 403 to prevent document ID enumeration attacks
+    if (!document) {
       return new NextResponse('Document not found', { status: 404 });
     }
 

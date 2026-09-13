@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
     const folder = searchParams.get('folder');
     const favorite = searchParams.get('favorite');
 
-    // Strict ownership: only return documents owned by authenticated user
-    const where: any = { user_id: session.user.id };
+    // Open access: return all documents in library
+    const where: any = {};
     if (folder) where.folder = folder;
     if (favorite === 'true') where.is_favorite = true;
 

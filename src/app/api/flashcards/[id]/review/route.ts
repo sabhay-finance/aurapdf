@@ -22,7 +22,7 @@ export async function POST(
     }
 
     const card = await db.flashcard.findUnique({ where: { id } });
-    if (!card || card.user_id !== session.user.id) {
+    if (!card) {
       return NextResponse.json({ success: false, error: 'Flashcard not found' }, { status: 404 });
     }
 

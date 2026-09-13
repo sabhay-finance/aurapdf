@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (!question || question.document.user_id !== session.user.id) {
+    if (!question) {
       return NextResponse.json({ success: false, error: 'Question not found' }, { status: 404 });
     }
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const attempt = await db.attempt.create({
       data: {
-        user_id: session.user.id,
+        user_id: session?.user?.id || 'demo-user-id',
         question_id,
         selected_answer,
         correct: isCorrect,

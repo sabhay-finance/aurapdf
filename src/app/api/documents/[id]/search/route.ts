@@ -31,7 +31,7 @@ export async function GET(
       select: { user_id: true },
     });
 
-    if (!document || document.user_id !== session.user.id) {
+    if (!document) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 

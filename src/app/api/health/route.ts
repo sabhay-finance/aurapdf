@@ -67,21 +67,11 @@ export async function GET() {
   }
 
   // 3. Auth Configuration Check
-  const hasAuthSecret = Boolean(process.env.AUTH_SECRET);
-  const hasGoogleOauth = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
-  const isDevAuthEnabled = process.env.ENABLE_DEV_AUTH === 'true';
-
   healthData.checks.auth = {
-    status: hasAuthSecret ? 'ok' : 'error',
-    hasAuthSecret,
-    googleOAuthConfigured: hasGoogleOauth,
-    devAuthActive: environment === 'development' && isDevAuthEnabled,
+    status: 'ok',
+    mode: 'open-access',
+    loginRequired: false,
   };
-
-  if (!hasAuthSecret) {
-    hasFatalError = true;
-    healthData.status = 'unhealthy';
-  }
 
   // 4. AI Provider Configuration Check
   const hasGemini = Boolean(process.env.GEMINI_API_KEY);

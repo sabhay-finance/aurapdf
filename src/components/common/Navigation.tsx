@@ -16,10 +16,9 @@ import {
   User,
   Sparkles,
   Search,
-  LogOut,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 interface NavigationProps {
   onOpenSettings?: () => void;
@@ -133,36 +132,29 @@ export const Navigation: React.FC<NavigationProps> = ({
             <span>Settings</span>
           </button>
 
-          {/* User Profile & Sign Out */}
+          {/* User Profile & Study Mode */}
           <div className="p-2.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/5 dark:border-white/5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
-              {session?.user?.image ? (
-                <img
-                  src={session.user.image}
-                  alt={session.user.name || 'User'}
-                  className="w-7 h-7 rounded-full object-cover shrink-0 border border-black/10 dark:border-white/20"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-neutral-700 dark:text-neutral-300 shrink-0">
-                  {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
-                </div>
-              )}
+              <div className="w-7 h-7 rounded-full bg-neutral-900 dark:bg-white flex items-center justify-center text-xs font-semibold text-white dark:text-neutral-900 shrink-0 shadow-xs">
+                A
+              </div>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-neutral-900 dark:text-white truncate">
-                  {session?.user?.name || 'Student'}
+                  {session?.user?.name || 'Alex Vance'}
                 </p>
-                <p className="text-[10px] text-neutral-400 truncate">
-                  {session?.user?.email || 'Authenticated'}
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                  Study Mode
                 </p>
               </div>
             </div>
 
             <button
-              onClick={() => signOut({ callbackUrl: '/login' })}
-              title="Sign out"
-              className="p-1.5 rounded-xl hover:bg-red-500/10 hover:text-red-500 text-neutral-400 transition-colors shrink-0 cursor-pointer"
+              onClick={onOpenSettings}
+              title="Study Settings"
+              className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors shrink-0 cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <Settings className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

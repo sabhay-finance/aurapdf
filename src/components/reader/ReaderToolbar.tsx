@@ -25,10 +25,9 @@ import {
   Eraser,
   Undo2,
   Redo2,
-  LogOut,
 } from 'lucide-react';
 import { GlassCard } from '@/components/common/GlassCard';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 interface ReaderToolbarProps {
   title: string;
@@ -315,17 +314,10 @@ export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
 
                 <div className="h-px bg-black/10 dark:bg-white/10 my-1" />
 
-                <div className="px-3 py-1 text-[11px] text-neutral-400 truncate">
-                  {session?.user?.email || 'Logged in'}
+                <div className="px-3 py-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium truncate flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Study Mode Active</span>
                 </div>
-
-                <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-xs rounded-xl hover:bg-red-500/10 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
               </GlassCard>
             )}
           </div>

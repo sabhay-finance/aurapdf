@@ -47,6 +47,17 @@ function prepareDatabase() {
     console.error('❌ Failed to generate Prisma Client:', err.message);
     process.exit(1);
   }
+
+  // Synchronize database schema and seed default student persona
+  try {
+    console.log('   🔄 Synchronizing schema with prisma db push...');
+    execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
+    console.log('   🌱 Seeding default student persona and study modules...');
+    execSync('npx tsx scripts/seed.ts', { stdio: 'inherit' });
+    console.log('✅ Database successfully prepared and ready.\n');
+  } catch (err: any) {
+    console.warn('⚠️ Non-fatal note during database initialization:', err.message);
+  }
 }
 
 prepareDatabase();

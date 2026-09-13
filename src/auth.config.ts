@@ -4,8 +4,8 @@ export const authConfig = {
   session: { strategy: 'jwt' },
   trustHost: true,
   pages: {
-    signIn: '/login',
-    error: '/login',
+    signIn: '/',
+    error: '/',
   },
   callbacks: {
     async session({ session, token }) {

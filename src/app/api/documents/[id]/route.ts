@@ -22,10 +22,10 @@ export async function GET(
           orderBy: { page_number: 'asc' },
         },
         annotations: {
-          where: { user_id: session.user.id },
+          orderBy: { created_at: 'asc' },
         },
         notes: {
-          where: { user_id: session.user.id },
+          orderBy: { created_at: 'asc' },
         },
         _count: {
           select: {
@@ -37,7 +37,7 @@ export async function GET(
       },
     });
 
-    if (!document || document.user_id !== session.user.id) {
+    if (!document) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
@@ -69,7 +69,7 @@ export async function PATCH(
       select: { user_id: true },
     });
 
-    if (!existing || existing.user_id !== session.user.id) {
+    if (!existing) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
@@ -112,7 +112,7 @@ export async function DELETE(
     const { id } = await params;
     const document = await db.document.findUnique({ where: { id } });
 
-    if (!document || document.user_id !== session.user.id) {
+    if (!document) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
