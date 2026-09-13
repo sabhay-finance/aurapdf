@@ -1,0 +1,273 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String           @id @default(uuid())
+  email          String?          @unique
+  emailVerified  DateTime?        @map("email_verified")
+  name           String?
+  image          String?
+  created_at     DateTime         @default(now())
+
+  accounts       Account[]
+  sessions       Session[]
+  documents      Document[]
+  annotations    Annotation[]
+  notes          Note[]
+  flashcards     Flashcard[]
+  questions      Question[]
+  attempts       Attempt[]
+  study_sessions StudySession[]
+  topic_stats    UserTopicStats[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+
+model Document {
+  id             String           @id @default(uuid())
+  user_id        String
+  title          String
+  file_url       String
+  file_size      Int              @default(0)
+  page_count     Int              @default(0)
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  last_opened_at DateTime         @default(now())
+  last_page      Int              @default(1)
+  is_favorite    Boolean          @default(false)
+  folder         String?          @default("General")
+
+  user           User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  pages          DocumentPage[]
+  chunks         DocumentChunk[]
+  annotations    Annotation[]
+  notes          Note[]
+  flashcards     Flashcard[]
+  questions      Question[]
+  study_sessions StudySession[]
+  topics         Topic[]
+
+  @@index([user_id])
+  @@map("documents")
+}
+
+model DocumentPage {
+  id          String   @id @default(uuid())
+  document_id String
+  page_number Int
+  text        String
+  width       Float    @default(612)
+  height      Float    @default(792)
+
+  document    Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@unique([document_id, page_number])
+  @@index([document_id])
+  @@map("document_pages")
+}
+
+model DocumentChunk {
+  id          String   @id @default(uuid())
+  document_id String
+  page_number Int
+  section     String?
+  chunk_index Int
+  text        String
+  embedding   String?  // JSON stringified vector representation for cosine similarity
+
+  document    Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, page_number])
+  @@map("document_chunks")
+}
+
+model Annotation {
+  id          String   @id @default(uuid())
+  document_id String
+  user_id     String
+  page_number Int
+  type        String   // "highlight", "underline", "ink", "note"
+  coordinates String   // JSON stringified: { x, y, width, height, points? } normalized 0..1
+  content     String?
+  color       String   @default("rgba(255, 235, 59, 0.3)")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  document    Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, page_number])
+  @@map("annotations")
+}
+
+model Note {
+  id            String   @id @default(uuid())
+  user_id       String
+  document_id   String
+  page_number   Int
+  selected_text String?
+  content       String
+  coordinates   String?  // JSON stringified: { x, y }
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  document      Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, page_number])
+  @@map("notes")
+}
+
+model Flashcard {
+  id             String    @id @default(uuid())
+  user_id        String
+  document_id    String
+  source_page    Int
+  question       String
+  answer         String
+  difficulty     Int       @default(0) // 0: new, 1: hard, 2: good, 3: easy
+  next_review_at DateTime  @default(now())
+  review_count   Int       @default(0)
+  interval_days  Float     @default(1)
+  ease_factor    Float     @default(2.5)
+  source_text    String?
+  tags           String?
+  created_at     DateTime  @default(now())
+
+  document       Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, document_id])
+  @@index([next_review_at])
+  @@map("flashcards")
+}
+
+model Question {
+  id             String    @id @default(uuid())
+  user_id        String
+  document_id    String
+  source_page    Int
+  topic          String
+  question       String
+  options        String    // JSON stringified array of 4 options
+  correct_answer String    // "A", "B", "C", or "D"
+  explanation    String
+  difficulty     String    @default("standard") // "simple", "standard", "exam"
+  created_at     DateTime  @default(now())
+
+  document       Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  attempts       Attempt[]
+
+  @@index([document_id, topic])
+  @@map("questions")
+}
+
+model Attempt {
+  id              String   @id @default(uuid())
+  user_id         String
+  question_id     String
+  selected_answer String
+  correct         Boolean
+  time_taken      Int      @default(0) // in seconds
+  created_at      DateTime @default(now())
+
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  question        Question @relation(fields: [question_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, question_id])
+  @@map("attempts")
+}
+
+model StudySession {
+  id               String    @id @default(uuid())
+  user_id          String
+  document_id      String
+  started_at       DateTime  @default(now())
+  ended_at         DateTime?
+  pages_read       Int       @default(0)
+  duration_seconds Int       @default(0)
+  questions_done   Int       @default(0)
+  flashcards_done  Int       @default(0)
+
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  document         Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, document_id])
+  @@map("study_sessions")
+}
+
+model Topic {
+  id          String           @id @default(uuid())
+  document_id String
+  name        String
+  description String?
+
+  document    Document         @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  stats       UserTopicStats[]
+
+  @@unique([document_id, name])
+  @@map("topics")
+}
+
+model UserTopicStats {
+  id               String   @id @default(uuid())
+  user_id          String
+  topic_id         String
+  attempts         Int      @default(0)
+  correct          Int      @default(0)
+  incorrect        Int      @default(0)
+  confidence_score Float    @default(0.0) // 0.0 - 1.0
+
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  topic            Topic    @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, topic_id])
+  @@map("user_topic_stats")
+}

@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #F7F7F5;
+  --fg: #111111;
+  --secondary: #6B6B6B;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-glass: rgba(0, 0, 0, 0.12);
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg: rgba(255, 255, 255, 0.88);
+  --glass-pill: rgba(255, 255, 255, 0.92);
+  --accent: #111111;
+  --accent-fg: #FFFFFF;
+  --subtle-hover: rgba(0, 0, 0, 0.05);
+  --highlight-yellow: rgba(245, 205, 71, 0.35);
+  --highlight-blue: rgba(96, 165, 250, 0.3);
+  --highlight-charcoal: rgba(100, 116, 139, 0.25);
+  --pdf-bg: #EFEFED;
+}
+
+.dark {
+  --bg: #0D0D0E;
+  --fg: #F5F5F7;
+  --secondary: #A1A1A6;
+  --border: rgba(255, 255, 255, 0.12);
+  --border-glass: rgba(255, 255, 255, 0.18);
+  --card-bg: rgba(26, 26, 30, 0.85);
+  --glass-bg: rgba(22, 22, 26, 0.9);
+  --glass-pill: rgba(30, 30, 34, 0.94);
+  --accent: #F5F5F7;
+  --accent-fg: #0D0D0E;
+  --subtle-hover: rgba(255, 255, 255, 0.08);
+  --highlight-yellow: rgba(234, 179, 8, 0.35);
+  --highlight-blue: rgba(59, 130, 246, 0.35);
+  --highlight-charcoal: rgba(148, 163, 184, 0.25);
+  --pdf-bg: #121214;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Apple macOS / VisionOS Glass UI Utilities */
+.glass-surface {
+  background: var(--glass-bg);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--border-glass);
+}
+
+.glass-pill {
+  background: var(--glass-pill);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.28);
+}
+
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
+
+/* Smooth fade transition for PDF reader controls */
+.fade-controls {
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Selection menu */
+::selection {
+  background: rgba(0, 0, 0, 0.15);
+}
+.dark ::selection {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* PDF.js Text Layer styling for exact text selection & highlighting */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  caret-color: transparent;
+}
+
+.textLayer :is(span, br) {
+  color: transparent !important;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(245, 205, 71, 0.5) !important;
+}
+
+.dark .textLayer ::selection {
+  background: rgba(245, 205, 71, 0.45) !important;
+}
+
