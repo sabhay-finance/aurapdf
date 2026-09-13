@@ -1,10 +1,7 @@
 storage/
 storage/**
 public/uploads/
-prisma/*.db
-prisma/*.db-journal
-prisma/*.db-shm
-prisma/*.db-wal
+# prisma db retained for serverless cold start seeding
 .next/
 *.local
 .env
