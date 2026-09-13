@@ -36,6 +36,11 @@ export interface GeneratedQuestion {
   topic: string;
 }
 
+export interface ChatMessageItem {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AIProvider {
   name: string;
   
@@ -46,6 +51,7 @@ export interface AIProvider {
     selectedText?: string;
     chunks: RetrievedChunk[];
     explanationLevel?: ExplanationLevel;
+    history?: ChatMessageItem[];
   }): Promise<AnswerResult>;
 
   summarize(params: {

@@ -25,6 +25,10 @@ import {
   Eraser,
   Undo2,
   Redo2,
+  Headphones,
+  FileSpreadsheet,
+  Award,
+  Zap,
 } from 'lucide-react';
 import { GlassCard } from '@/components/common/GlassCard';
 import { useSession } from 'next-auth/react';
@@ -55,6 +59,12 @@ interface ReaderToolbarProps {
   onToggleSearch: () => void;
   onSetAnnotationTool: (tool: 'none' | 'highlight' | 'pen' | 'eraser') => void;
   fileUrl: string;
+  isAudioTutorOpen?: boolean;
+  onToggleAudioTutor?: () => void;
+  onOpenCheatSheet?: () => void;
+  onOpenViva?: () => void;
+  isBionicReading?: boolean;
+  onToggleBionic?: () => void;
 }
 
 export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
@@ -83,6 +93,12 @@ export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
   onToggleSearch,
   onSetAnnotationTool,
   fileUrl,
+  isAudioTutorOpen = false,
+  onToggleAudioTutor,
+  onOpenCheatSheet,
+  onOpenViva,
+  isBionicReading = false,
+  onToggleBionic,
 }) => {
   const { data: session } = useSession();
   const [showMore, setShowMore] = useState(false);
@@ -253,6 +269,43 @@ export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
             <span>AI</span>
           </button>
 
+          {/* Audio Tutor toggle */}
+          {onToggleAudioTutor && (
+            <button
+              onClick={onToggleAudioTutor}
+              className={`p-1.5 rounded-full transition-colors ${
+                isAudioTutorOpen
+                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40'
+                  : 'hover:bg-black/5 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white'
+              }`}
+              title="NotebookLM-Style Spoken Audio Tutor"
+            >
+              <Headphones className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Cheat Sheet */}
+          {onOpenCheatSheet && (
+            <button
+              onClick={onOpenCheatSheet}
+              className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white transition-colors"
+              title="1-Click High-Yield Cheat Sheet"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Socratic Viva / Oral Exam */}
+          {onOpenViva && (
+            <button
+              onClick={onOpenViva}
+              className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white transition-colors"
+              title="Socratic Oral Exam / Viva Mode"
+            >
+              <Award className="w-4 h-4" />
+            </button>
+          )}
+
           {/* More menu trigger */}
           <div className="relative">
             <button
@@ -281,6 +334,28 @@ export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
                   </span>
                 </button>
 
+                {onToggleBionic && (
+                  <button
+                    onClick={() => {
+                      onToggleBionic();
+                      setShowMore(false);
+                    }}
+                    className="flex items-center justify-between w-full px-3 py-2 text-xs rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-neutral-800 dark:text-neutral-200"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Zap className={`w-3.5 h-3.5 ${isBionicReading ? 'text-amber-500 fill-amber-500' : ''}`} />
+                      <span>Bionic Focus Reading</span>
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
+                      isBionicReading 
+                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                        : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                    }`}>
+                      {isBionicReading ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     onRotate();
@@ -304,7 +379,7 @@ export const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
                 </button>
 
                 <a
-                  href={fileUrl}
+                  href={fileUrl.replace(/\/file$/, '/download')}
                   download
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-neutral-800 dark:text-neutral-200"
                 >

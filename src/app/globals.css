@@ -131,3 +131,17 @@ body {
   background: rgba(245, 205, 71, 0.45) !important;
 }
 
+/* Bionic Speed Reading Fixation Point Highlights */
+.textLayer span.bionic-word-visible {
+  color: #0f172a !important;
+  background-color: rgba(255, 255, 255, 0.94);
+  border-radius: 2px;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.dark .textLayer span.bionic-word-visible {
+  color: #f8fafc !important;
+  background-color: rgba(18, 18, 22, 0.94);
+  box-shadow: 0 0 2px rgba(18, 18, 22, 0.8);
+}
+

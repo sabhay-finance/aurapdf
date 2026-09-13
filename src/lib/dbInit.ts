@@ -40,16 +40,41 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
       "id" TEXT NOT NULL PRIMARY KEY,
       "user_id" TEXT NOT NULL,
       "title" TEXT NOT NULL,
+      "description" TEXT,
+      "original_filename" TEXT DEFAULT '',
+      "storage_path" TEXT DEFAULT '',
+      "mime_type" TEXT DEFAULT 'application/pdf',
       "file_url" TEXT NOT NULL,
       "file_size" INTEGER NOT NULL DEFAULT 0,
+      "file_hash" TEXT,
       "page_count" INTEGER NOT NULL DEFAULT 0,
+      "category" TEXT DEFAULT 'General',
+      "tags" TEXT,
+      "uploaded_by" TEXT DEFAULT 'Community Member',
+      "uploaded_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updated_at" ${dateType} NOT NULL,
       "last_opened_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "last_page" INTEGER NOT NULL DEFAULT 1,
       "is_favorite" BOOLEAN NOT NULL DEFAULT ${boolDefault},
       "folder" TEXT DEFAULT 'General',
+      "status" TEXT DEFAULT 'active',
+      "visibility" TEXT DEFAULT 'community',
+      "view_count" INTEGER DEFAULT 0,
+      "download_count" INTEGER DEFAULT 0,
+      "processing_status" TEXT DEFAULT 'ready',
+      "text_extraction_status" TEXT DEFAULT 'pending',
+      "ai_indexing_status" TEXT DEFAULT 'pending',
       CONSTRAINT "documents_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );`,
+    `CREATE TABLE IF NOT EXISTS "reports" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "document_id" TEXT NOT NULL,
+      "reported_by" TEXT NOT NULL,
+      "reason" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'pending',
+      "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "reports_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     );`,
     `CREATE TABLE IF NOT EXISTS "document_files" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -181,7 +206,11 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
     );`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "document_pages_document_id_page_number_key" ON "document_pages"("document_id", "page_number");`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "topics_document_id_name_key" ON "topics"("document_id", "name");`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS "user_topic_stats_user_id_topic_id_key" ON "user_topic_stats"("user_id", "topic_id");`
+    `CREATE UNIQUE INDEX IF NOT EXISTS "user_topic_stats_user_id_topic_id_key" ON "user_topic_stats"("user_id", "topic_id");`,
+    `CREATE INDEX IF NOT EXISTS "documents_file_hash_idx" ON "documents"("file_hash");`,
+    `CREATE INDEX IF NOT EXISTS "documents_visibility_idx" ON "documents"("visibility");`,
+    `CREATE INDEX IF NOT EXISTS "documents_category_idx" ON "documents"("category");`,
+    `CREATE INDEX IF NOT EXISTS "reports_document_id_idx" ON "reports"("document_id");`
   ];
 
   for (const stmt of statements) {
@@ -189,6 +218,34 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
       await client.$executeRawUnsafe(stmt);
     } catch (e) {
       // ignore
+    }
+  }
+
+  // Gracefully migrate existing documents table if created under older schema
+  const columnMigrations = [
+    `ALTER TABLE "documents" ADD COLUMN "description" TEXT;`,
+    `ALTER TABLE "documents" ADD COLUMN "original_filename" TEXT DEFAULT '';`,
+    `ALTER TABLE "documents" ADD COLUMN "storage_path" TEXT DEFAULT '';`,
+    `ALTER TABLE "documents" ADD COLUMN "mime_type" TEXT DEFAULT 'application/pdf';`,
+    `ALTER TABLE "documents" ADD COLUMN "file_hash" TEXT;`,
+    `ALTER TABLE "documents" ADD COLUMN "category" TEXT DEFAULT 'General';`,
+    `ALTER TABLE "documents" ADD COLUMN "tags" TEXT;`,
+    `ALTER TABLE "documents" ADD COLUMN "uploaded_by" TEXT DEFAULT 'Community Member';`,
+    `ALTER TABLE "documents" ADD COLUMN "uploaded_at" ${dateType} DEFAULT CURRENT_TIMESTAMP;`,
+    `ALTER TABLE "documents" ADD COLUMN "status" TEXT DEFAULT 'active';`,
+    `ALTER TABLE "documents" ADD COLUMN "visibility" TEXT DEFAULT 'community';`,
+    `ALTER TABLE "documents" ADD COLUMN "view_count" INTEGER DEFAULT 0;`,
+    `ALTER TABLE "documents" ADD COLUMN "download_count" INTEGER DEFAULT 0;`,
+    `ALTER TABLE "documents" ADD COLUMN "processing_status" TEXT DEFAULT 'ready';`,
+    `ALTER TABLE "documents" ADD COLUMN "text_extraction_status" TEXT DEFAULT 'pending';`,
+    `ALTER TABLE "documents" ADD COLUMN "ai_indexing_status" TEXT DEFAULT 'pending';`,
+  ];
+
+  for (const altStmt of columnMigrations) {
+    try {
+      await client.$executeRawUnsafe(altStmt);
+    } catch {
+      // Column already exists - ignore
     }
   }
 

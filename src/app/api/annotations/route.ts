@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
-    const where: any = { document_id: documentId };
+    const where: any = { document_id: documentId, user_id: session.user.id };
     if (pageNumber) where.page_number = Number(pageNumber);
 
     const annotations = await db.annotation.findMany({
@@ -103,11 +103,15 @@ export async function DELETE(req: NextRequest) {
 
     const existing = await db.annotation.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, user_id: true },
     });
 
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Annotation not found' }, { status: 404 });
+    }
+
+    if (existing.user_id !== session.user.id) {
+      return NextResponse.json({ success: false, error: 'Forbidden: You can only delete your own annotations' }, { status: 403 });
     }
 
     await db.annotation.delete({ where: { id } });

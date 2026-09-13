@@ -13,9 +13,9 @@ export async function GET(req: NextRequest) {
     const documentId = searchParams.get('document_id');
     const pageNumber = searchParams.get('page_number');
 
-    const where: any = {};
+    const where: any = { user_id: session.user.id };
     if (documentId) {
-      // Verify document ownership
+      // Verify document exists
       const doc = await db.document.findUnique({
         where: { id: documentId },
         select: { id: true },
@@ -105,11 +105,15 @@ export async function DELETE(req: NextRequest) {
 
     const existing = await db.note.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, user_id: true },
     });
 
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Note not found' }, { status: 404 });
+    }
+
+    if (existing.user_id !== session.user.id) {
+      return NextResponse.json({ success: false, error: 'Forbidden: You can only delete your own notes' }, { status: 403 });
     }
 
     await db.note.delete({ where: { id } });
@@ -118,3 +122,45 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { id, content, page_number } = body;
+
+    if (!id || typeof content !== 'string') {
+      return NextResponse.json({ success: false, error: 'id and content are required' }, { status: 400 });
+    }
+
+    const existing = await db.note.findUnique({
+      where: { id },
+      select: { id: true, user_id: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Note not found' }, { status: 404 });
+    }
+
+    if (existing.user_id !== session.user.id) {
+      return NextResponse.json({ success: false, error: 'Forbidden: You can only edit your own notes' }, { status: 403 });
+    }
+
+    const data: any = { content };
+    if (page_number !== undefined) data.page_number = Number(page_number);
+
+    const updatedNote = await db.note.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json({ success: true, note: updatedNote });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+

@@ -14,6 +14,8 @@ import {
   Settings,
   Cpu,
   Zap,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import { GlassCard } from '@/components/common/GlassCard';
 import { Citation } from '@/types';
@@ -176,12 +178,16 @@ export const AISidebar: React.FC<AISidebarProps> = ({
     {
       id: 'welcome',
       role: 'assistant',
-      content: `### 🎓 Welcome to AuraPDF AI Study Tutor\n\nI am grounded directly in **${documentTitle}**. Every answer cites exact textbook page numbers.\n\nClick any quick prompt below or ask about any concept on **Page ${currentPage}${isTwoPage ? ` - ${currentPage + 1}` : ''}**.`,
+      content: `### ✨ Google Gemini 2.0 Study Companion\n\nI am grounded directly in **${documentTitle}** with complete conversational memory.\n\nAsk me anything in **English**, **हिन्दी**, or **Hinglish** — just like normal Google Gemini!\n\n> Try asking: *"Bhai ye concept simple bhasha me samjha de"* or click a quick prompt below.`,
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeProviderName, setActiveProviderName] = useState<string>('Local Study Engine');
+  const [activeProviderName, setActiveProviderName] = useState<string>('Google Gemini 2.0');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [keySavedNotice, setKeySavedNotice] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -192,12 +198,17 @@ export const AISidebar: React.FC<AISidebarProps> = ({
     if (typeof window !== 'undefined') {
       const storedKey = localStorage.getItem('aura_api_key');
       const storedProv = localStorage.getItem('aura_ai_provider');
-      if (storedKey && storedProv === 'gemini') {
-        setActiveProviderName('Google Gemini 2.0');
-      } else if (storedKey && storedProv === 'openai') {
-        setActiveProviderName('OpenAI GPT-4o');
+      if (storedKey && storedKey.trim().length > 6) {
+        setHasApiKey(true);
+        setGeminiKeyInput(storedKey.trim());
+        if (storedProv === 'openai') {
+          setActiveProviderName('OpenAI GPT-4o');
+        } else {
+          setActiveProviderName('Google Gemini 2.0');
+        }
       } else {
-        setActiveProviderName('Local Study Engine (Grounded)');
+        setHasApiKey(false);
+        setActiveProviderName('Local Study Engine');
       }
     }
   }, [isOpen]);
@@ -210,6 +221,36 @@ export const AISidebar: React.FC<AISidebarProps> = ({
 
   if (!isOpen) return null;
 
+  const handleSaveGeminiKey = () => {
+    const trimmed = geminiKeyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem('aura_api_key', trimmed);
+    localStorage.setItem('aura_ai_provider', 'gemini');
+    setHasApiKey(true);
+    setShowKeyInput(false);
+    setActiveProviderName('Google Gemini 2.0');
+    setKeySavedNotice(true);
+    setTimeout(() => setKeySavedNotice(false), 3000);
+  };
+
+  const handleRemoveGeminiKey = () => {
+    localStorage.removeItem('aura_api_key');
+    localStorage.setItem('aura_ai_provider', 'local');
+    setHasApiKey(false);
+    setGeminiKeyInput('');
+    setActiveProviderName('Local Study Engine');
+  };
+
+  const handleClearChat = () => {
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: `### ✨ Fresh Conversation Started\n\nI am your Google Gemini study partner for **${documentTitle}**.\n\nAsk me anything in **English**, **हिन्दी**, or **Hinglish**!`,
+      },
+    ]);
+  };
+
   const handleSend = async (queryToSend?: string) => {
     const query = queryToSend || input;
     if (!query.trim() || loading) return;
@@ -220,13 +261,22 @@ export const AISidebar: React.FC<AISidebarProps> = ({
       content: query,
     };
 
+    // Filter non-welcome messages for multi-turn conversational context
+    const historyPayload = messages
+      .filter((m) => m.id !== 'welcome')
+      .slice(-10)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
     setMessages((prev) => [...prev, userMessage]);
     if (!queryToSend) setInput('');
     setLoading(true);
 
     try {
       const apiKey = localStorage.getItem('aura_api_key') || undefined;
-      const provider = localStorage.getItem('aura_ai_provider') || 'local';
+      const provider = localStorage.getItem('aura_ai_provider') || (apiKey ? 'gemini' : 'local');
       const explanationLevel = localStorage.getItem('aura_explanation_level') || 'standard';
 
       const res = await fetch('/api/ai/query', {
@@ -240,6 +290,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
           explanation_level: explanationLevel,
           apiKey,
           provider,
+          history: historyPayload,
         }),
       });
 
@@ -282,8 +333,9 @@ export const AISidebar: React.FC<AISidebarProps> = ({
 
   const suggestedChips = [
     pagePromptLabel,
+    'Explain in Hinglish (simple)',
     'Summarize this section',
-    'Find key decision rules & formulas',
+    'Find key rules & formulas',
     'Test me with an exam question',
     'Create flashcards for this concept',
   ];
@@ -300,37 +352,113 @@ export const AISidebar: React.FC<AISidebarProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-                  Contextual AI Tutor
+                  Gemini Study AI
                 </h3>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
-                  {activeProviderName.includes('Gemini') ? 'Gemini 2.0' : 'Grounded'}
-                </span>
+                <button
+                  onClick={() => setShowKeyInput(!showKeyInput)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                    hasApiKey
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                  }`}
+                  title={hasApiKey ? 'Gemini is connected. Click to edit key.' : 'Click to connect Google Gemini API Key'}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      hasApiKey ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                    }`}
+                  />
+                  <span>{hasApiKey ? 'Gemini Active' : 'Connect Gemini'}</span>
+                </button>
               </div>
               <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block font-mono">
-                Viewing: Page {currentPage}
+                Page {currentPage}
                 {isTwoPage ? ` & ${currentPage + 1}` : ''}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-1">
+            <button
+              onClick={handleClearChat}
+              title="New Chat / Clear History"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
                 title="AI Settings & API Keys"
-                className="p-1.5 rounded-lg text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                className="p-1.5 rounded-lg text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <Settings className="w-4 h-4" />
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-lg text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        {/* Inline Gemini Key Setup Banner (if not configured or user clicked to edit) */}
+        {(!hasApiKey || showKeyInput) && (
+          <div className="my-2.5 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white">
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Google Gemini Connection</span>
+              </div>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline font-medium"
+              >
+                Get Free Key ↗
+              </a>
+            </div>
+            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-snug">
+              Paste your free Gemini API key to talk normally with multi-turn memory, Hindi/Hinglish chat, and grounded study answers.
+            </p>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="password"
+                value={geminiKeyInput}
+                onChange={(e) => setGeminiKeyInput(e.target.value)}
+                placeholder="Paste Gemini API Key (AIzaSy...)"
+                className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-black/15 dark:border-white/20 bg-white dark:bg-[#18181C] text-neutral-900 dark:text-white outline-none focus:border-amber-500 font-mono"
+              />
+              <button
+                onClick={handleSaveGeminiKey}
+                disabled={!geminiKeyInput.trim()}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer whitespace-nowrap"
+              >
+                Save
+              </button>
+              {hasApiKey && (
+                <button
+                  onClick={handleRemoveGeminiKey}
+                  className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 cursor-pointer"
+                  title="Remove key"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Success feedback when key saved */}
+        {keySavedNotice && (
+          <div className="my-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+            <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span>Google Gemini 2.0 key saved! You can now chat naturally.</span>
+          </div>
+        )}
 
         {/* Suggested Quick Chips */}
         <div className="py-2.5 overflow-x-auto flex gap-1.5 no-scrollbar shrink-0 border-b border-black/5 dark:border-white/10">
@@ -424,7 +552,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
           {loading && (
             <div className="flex items-center gap-2 p-3 text-neutral-600 dark:text-neutral-300 text-xs animate-pulse">
               <Loader2 className="w-4 h-4 animate-spin text-neutral-900 dark:text-white" />
-              <span>Analyzing document context and synthesizing grounded study guide...</span>
+              <span>Gemini is thinking and reviewing document context...</span>
             </div>
           )}
 
@@ -443,7 +571,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about formulas, concepts, or page..."
+            placeholder="Ask Gemini anything (English, हिन्दी, Hinglish)..."
             className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-black/15 dark:border-white/20 bg-neutral-50 dark:bg-[#18181C] text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 outline-none focus:border-black/40 dark:focus:border-white/40"
           />
           <button

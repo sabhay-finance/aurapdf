@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const documentId = searchParams.get('document_id');
     const dueOnly = searchParams.get('due_only') === 'true';
 
-    const where: any = {};
+    const where: any = { user_id: session.user.id };
     if (documentId) {
       const doc = await db.document.findUnique({
         where: { id: documentId },

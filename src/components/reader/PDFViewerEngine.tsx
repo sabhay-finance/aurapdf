@@ -32,6 +32,7 @@ interface PDFViewerEngineProps {
   onMakeFlashcardFromSelection: (text: string, pageNumber: number) => void;
   onMakeMCQFromSelection: (text: string, pageNumber: number) => void;
   currentPage: number;
+  isBionicReading?: boolean;
 }
 
 export const PDFViewerEngine: React.FC<PDFViewerEngineProps> = ({
@@ -53,6 +54,7 @@ export const PDFViewerEngine: React.FC<PDFViewerEngineProps> = ({
   onMakeFlashcardFromSelection,
   onMakeMCQFromSelection,
   currentPage,
+  isBionicReading = false,
 }) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [totalPages, setTotalPages] = useState<number>(0);
@@ -166,6 +168,34 @@ export const PDFViewerEngine: React.FC<PDFViewerEngineProps> = ({
     };
   }, [pdfDoc, documentId]);
 
+  // Format or restore bionic reading typography
+  const formatBionicElements = (container: HTMLDivElement | null, active: boolean) => {
+    if (!container) return;
+    const spans = container.querySelectorAll('span');
+    spans.forEach((span) => {
+      if (active) {
+        if (!span.hasAttribute('data-raw-text')) {
+          span.setAttribute('data-raw-text', span.textContent || '');
+        }
+        const raw = span.getAttribute('data-raw-text') || '';
+        if (raw.trim()) {
+          const formatted = raw.replace(/\b([a-zA-Z0-9]+)\b/g, (word) => {
+            const fixLen = Math.ceil(word.length * 0.45);
+            return `<strong style="font-weight: 800;">${word.slice(0, fixLen)}</strong>${word.slice(fixLen)}`;
+          });
+          span.innerHTML = formatted;
+          span.classList.add('bionic-word-visible');
+        }
+      } else {
+        if (span.hasAttribute('data-raw-text')) {
+          span.textContent = span.getAttribute('data-raw-text');
+          span.removeAttribute('data-raw-text');
+        }
+        span.classList.remove('bionic-word-visible');
+      }
+    });
+  };
+
   // Render a specific page to canvas and build text selection layer
   const renderPage = useCallback(
     async (
@@ -260,6 +290,10 @@ export const PDFViewerEngine: React.FC<PDFViewerEngineProps> = ({
               textLayerDiv.appendChild(span);
             }
           }
+
+          if (isBionicReading) {
+            formatBionicElements(textLayerDiv, true);
+          }
         }
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
@@ -267,8 +301,14 @@ export const PDFViewerEngine: React.FC<PDFViewerEngineProps> = ({
         }
       }
     },
-    [pdfDoc, zoom, rotation, isTwoPage]
+    [pdfDoc, zoom, rotation, isTwoPage, isBionicReading]
   );
+
+  // Bionic reading live toggle effect
+  useEffect(() => {
+    formatBionicElements(textLayerRef1.current, isBionicReading);
+    formatBionicElements(textLayerRef2.current, isBionicReading);
+  }, [isBionicReading]);
 
   // Trigger page rendering on state change
   useEffect(() => {

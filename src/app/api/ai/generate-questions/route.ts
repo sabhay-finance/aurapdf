@@ -45,16 +45,41 @@ export async function POST(req: NextRequest) {
       take: 6,
     });
 
+    const chunkItems = chunks.map((c) => ({
+      page_number: c.page_number,
+      section: c.section,
+      text: c.text,
+    }));
+
+    if (body.selected_text && typeof body.selected_text === 'string' && body.selected_text.trim().length > 10) {
+      chunkItems.unshift({
+        page_number: page_number ? Number(page_number) : 1,
+        section: 'Selected Concept',
+        text: body.selected_text.trim(),
+      });
+    }
+
     const ai = getAIProvider(apiKey, provider);
-    const questions = await ai.generateQuestions({
-      chunks: chunks.map((c) => ({
-        page_number: c.page_number,
-        section: c.section,
-        text: c.text,
-      })),
+    const rawQuestions = await ai.generateQuestions({
+      chunks: chunkItems,
       count,
       difficulty,
     });
+
+    const cleanQuestionText = (text: string) => {
+      let cleaned = text
+        .replace(/^Based on (?:Page \d+|the document|the curriculum|the text)[^,:]*[,:]?\s*/i, '')
+        .replace(/^According to (?:Page \d+|the document|the curriculum|the text)[^,:]*[,:]?\s*/i, '')
+        .replace(/^(?:On|From) Page \d+[,:]?\s*/i, '')
+        .trim();
+      if (!cleaned) return text;
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    };
+
+    const questions = rawQuestions.map((q) => ({
+      ...q,
+      question: cleanQuestionText(q.question),
+    }));
 
     const savedQuestions = [];
     if (saveToDatabase && questions.length > 0) {

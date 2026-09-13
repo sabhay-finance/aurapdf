@@ -34,6 +34,10 @@ storage/uploads/
 public/uploads/
 
 # SQLite Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 prisma/*.db
 prisma/*.db-journal
 prisma/*.db-shm

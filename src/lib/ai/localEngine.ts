@@ -519,6 +519,8 @@ export class LocalEngineProvider implements AIProvider {
 
     if (cleanedChunks.length > 0) {
       const generated: GeneratedQuestion[] = [];
+      const keys: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D'];
+
       for (const chunk of cleanedChunks) {
         const sentences = chunk.text
           .split(/(?<=[.?!])\s+/)
@@ -526,24 +528,66 @@ export class LocalEngineProvider implements AIProvider {
           .filter((s) => s.length > 35 && s.length < 220);
 
         for (const s of sentences) {
-          const topicName = chunk.section || `Page ${chunk.page_number} Assessment`;
-          const words = s.split(/\s+/);
+          // Extract leading subject or term if present
+          const subjectMatch = s.match(
+            /^([A-Z0-9][A-Za-z0-9\s-]{1,35}?)(?:\s+(?:is|are|was|were|can|refers|represents|occurs|describes|involves|functions|provides|demands|requires|includes|assumes|states))\b/i
+          );
+          const subject = subjectMatch ? subjectMatch[1].trim() : null;
+
+          let questionText = '';
+          if (subject && subject.split(/\s+/).length <= 4) {
+            questionText = `Which of the following statements regarding ${subject} is accurate?`;
+          } else if (chunk.section && !chunk.section.toLowerCase().includes('page')) {
+            questionText = `Which of the following statements regarding ${chunk.section} is accurate?`;
+          } else {
+            questionText = 'Which of the following statements is accurate?';
+          }
+
+          const topicName = subject || chunk.section || 'Curriculum Concept';
+          const correctIdx = generated.length % 4;
+          const correctKey = keys[correctIdx];
+
+          const rawOptions = [
+            { isCorrect: true, text: s },
+            {
+              isCorrect: false,
+              text: subject
+                ? `${subject} is restricted strictly to isolated standalone modules with zero practical integration.`
+                : 'This principle applies strictly to standalone theoretical models with no practical application.',
+            },
+            {
+              isCorrect: false,
+              text: subject
+                ? `${subject} applies solely under static assumptions and is omitted from broader analytical frameworks.`
+                : 'This concept applies solely under static conditions and is omitted in modern valuation.',
+            },
+            {
+              isCorrect: false,
+              text: subject
+                ? `${subject} has been replaced by qualitative heuristic evaluations in contemporary standards.`
+                : 'It has been completely superseded by qualitative discretionary estimates.',
+            },
+          ];
+
+          // Swap correct answer to the alternating target position
+          const temp = rawOptions[0];
+          rawOptions[0] = rawOptions[correctIdx];
+          rawOptions[correctIdx] = temp;
+
+          const options = rawOptions.map((opt, idx) => ({
+            key: keys[idx],
+            text: opt.text,
+          }));
+
           generated.push({
-            question: `Based on Page ${chunk.page_number} of the document, which statement is ACCURATE?`,
-            options: [
-              { key: 'A' as const, text: s },
-              {
-                key: 'B' as const,
-                text: `The text states that ${words.slice(0, 4).join(' ')} is universally prohibited in practice.`,
-              },
-              { key: 'C' as const, text: 'This principle applies only to long-term government debt obligations.' },
-              { key: 'D' as const, text: 'The model has been fully repudiated by contemporary econometric standards.' },
-            ],
-            correct_answer: 'A' as const,
-            explanation: `Page ${chunk.page_number} confirms: "${s}"`,
+            question: questionText,
+            options,
+            correct_answer: correctKey,
+            explanation: `Curriculum concept confirmation: "${s}"`,
             source_page: chunk.page_number,
             topic: topicName,
           });
+
           if (generated.length >= count) return generated;
         }
       }

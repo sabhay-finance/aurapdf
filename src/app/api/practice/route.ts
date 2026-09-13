@@ -14,11 +14,12 @@ export async function GET(req: NextRequest) {
     const topic = searchParams.get('topic');
     const pageNumber = searchParams.get('page_number');
 
-    // Scoped strictly to documents belonging to the authenticated user
+    // Scoped strictly to the authenticated user's questions or shared templates
     const where: any = {
-      document: {
-        user_id: session.user.id,
-      },
+      OR: [
+        { user_id: session.user.id },
+        { user_id: 'demo-user-id' },
+      ],
     };
 
     if (documentId) {

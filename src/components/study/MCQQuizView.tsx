@@ -27,6 +27,9 @@ export const MCQQuizView: React.FC<MCQQuizViewProps> = ({ questions, onRefresh }
       const docsData = await docsRes.json();
       if (docsData.success && docsData.documents?.length > 0) {
         const doc = docsData.documents[0];
+        const apiKey = typeof window !== 'undefined' ? localStorage.getItem('aura_api_key') || undefined : undefined;
+        const provider = typeof window !== 'undefined' ? localStorage.getItem('aura_ai_provider') || undefined : undefined;
+
         await fetch('/api/ai/generate-questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -36,6 +39,8 @@ export const MCQQuizView: React.FC<MCQQuizViewProps> = ({ questions, onRefresh }
             count: 3,
             difficulty: 'standard',
             saveToDatabase: true,
+            apiKey,
+            provider,
           }),
         });
         onRefresh();
@@ -119,17 +124,33 @@ export const MCQQuizView: React.FC<MCQQuizViewProps> = ({ questions, onRefresh }
     }
   };
 
+  const cleanQuestion = (qText: string) => {
+    let cleaned = qText
+      .replace(/^Based on (?:Page \d+|the document|the curriculum|the text)[^,:]*[,:]?\s*/i, '')
+      .replace(/^According to (?:Page \d+|the document|the curriculum|the text)[^,:]*[,:]?\s*/i, '')
+      .replace(/^(?:On|From) Page \d+[,:]?\s*/i, '')
+      .trim();
+    if (!cleaned) return qText;
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  };
+
+  const cleanTopic = (t?: string) => {
+    if (!t) return 'CURRICULUM CONCEPT';
+    const cleaned = t.replace(/^Page \d+\s*(?:Assessment)?/i, '').trim();
+    return cleaned || 'CURRICULUM CONCEPT';
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between text-xs font-mono text-neutral-500">
-        <span className="uppercase tracking-wider">{currentQuestion.topic}</span>
+        <span className="uppercase tracking-wider">{cleanTopic(currentQuestion.topic)}</span>
         <span>Question {currentIndex + 1} / {questions.length}</span>
       </div>
 
       <GlassCard variant="surface" className="p-6 md:p-8 space-y-6 shadow-xl border border-black/10 dark:border-white/15">
         {/* Question text */}
         <h3 className="text-lg md:text-xl font-semibold tracking-tight text-neutral-900 dark:text-white leading-relaxed">
-          {currentQuestion.question}
+          {cleanQuestion(currentQuestion.question)}
         </h3>
 
         {/* 4 Radio Options */}

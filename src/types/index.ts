@@ -9,16 +9,46 @@ export interface Document {
   id: string;
   user_id: string;
   title: string;
+  description?: string | null;
+  original_filename?: string;
+  storage_path?: string;
+  mime_type?: string;
   file_url: string;
   file_size: number;
+  file_hash?: string | null;
   page_count: number;
+  category?: string | null;
+  tags?: string | null;
+  uploaded_by?: string | null;
+  uploaded_at?: string;
   created_at: string;
   updated_at: string;
   last_opened_at: string;
   last_page: number;
   is_favorite?: boolean;
   folder?: string;
+  status?: string;
+  visibility?: string;
+  view_count?: number;
+  download_count?: number;
+  processing_status?: 'uploading' | 'processing' | 'ready' | 'failed' | string;
+  text_extraction_status?: 'pending' | 'processing' | 'completed' | 'failed' | string;
+  ai_indexing_status?: 'pending' | 'processing' | 'completed' | 'failed' | string;
   pages?: DocumentPage[];
+  _count?: {
+    notes?: number;
+    annotations?: number;
+    flashcards?: number;
+  };
+}
+
+export interface Report {
+  id: string;
+  document_id: string;
+  reported_by: string;
+  reason: string;
+  status: 'pending' | 'reviewed' | 'dismissed' | 'action_taken' | string;
+  created_at: string;
 }
 
 export interface DocumentPage {

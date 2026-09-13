@@ -15,12 +15,18 @@ import { GlassCard } from '@/components/common/GlassCard';
 import { GlassButton } from '@/components/common/GlassButton';
 import { AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Document, Annotation, Note } from '@/types';
+import { useSession } from 'next-auth/react';
+import { AudioTutorBar } from '@/components/reader/AudioTutorBar';
+import { CheatSheetModal } from '@/components/study/CheatSheetModal';
+import { SocraticVivaModal } from '@/components/study/SocraticVivaModal';
 
 export default function ReaderPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const documentId = resolvedParams.id;
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { data: session } = useSession();
+  const userKey = session?.user?.id || 'guest';
 
   const [document, setDocument] = useState<Document | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +40,20 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
 
-  // UI Drawer states
+  // UI Drawer & Modal states
   const [isAIOpen, setIsAIOpen] = useState(searchParams.get('ai') === 'true');
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [isThumbnailsOpen, setIsThumbnailsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(false);
+
+  // Million-Dollar Study Features
+  const [isAudioTutorOpen, setIsAudioTutorOpen] = useState(false);
+  const [isCheatSheetOpen, setIsCheatSheetOpen] = useState(false);
+  const [isVivaOpen, setIsVivaOpen] = useState(false);
+  const [isBionicReading, setIsBionicReading] = useState(false);
 
   // Context for AI / Notes from selection
   const [contextSelectedText, setContextSelectedText] = useState<string | undefined>(undefined);
@@ -65,17 +78,36 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     setTimeout(() => setToastMessage(null), 3200);
   };
 
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const totalPagesRef = useRef(1);
+
+  useEffect(() => {
+    totalPagesRef.current = totalPages;
+  }, [totalPages]);
+
   // Fetch document details & annotations
   useEffect(() => {
     async function loadData() {
       try {
         setError(null);
-        const res = await fetch(`/api/documents/${documentId}`);
+        const res = await fetch(`/api/documents/${documentId}?increment_view=true`);
         const data = await res.json();
         if (data.success && data.document) {
           setDocument(data.document);
-          setCurrentPage(data.document.last_page || 1);
-          setTotalPages(data.document.page_count || 1);
+
+          // Fast local restoration with DB fallback (scoped per user)
+          const cachedPage = typeof window !== 'undefined'
+            ? parseInt(localStorage.getItem(`aura_last_page_${userKey}_${documentId}`) || localStorage.getItem(`aura_last_page_${documentId}`) || '', 10)
+            : NaN;
+          const initialPage = !isNaN(cachedPage) && cachedPage >= 1
+            ? cachedPage
+            : (data.document.last_page || 1);
+
+          const docPages = Math.max(1, data.document.page_count || 1);
+          setCurrentPage(initialPage);
+          setTotalPages(docPages);
+          totalPagesRef.current = docPages;
+
           if (data.document.annotations) setAnnotations(data.document.annotations);
           if (data.document.notes) setNotes(data.document.notes);
         } else {
@@ -87,17 +119,31 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
       }
     }
     loadData();
-  }, [documentId]);
+  }, [documentId, userKey]);
 
-  // Persist reading position (debounced & clamped)
+  // Persist reading position (debounced & clamped, scoped per user)
   const saveReadingPosition = (page: number) => {
-    const clampedPage = Math.max(1, Math.min(totalPages, page));
+    const maxPages = totalPagesRef.current > 1 ? totalPagesRef.current : 99999;
+    const clampedPage = Math.max(1, Math.min(maxPages, page));
     setCurrentPage(clampedPage);
-    fetch(`/api/documents/${documentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ last_page: clampedPage, last_opened_at: new Date() }),
-    }).catch(console.error);
+
+    // 1. Instant local persistence for zero-delay restoration
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`aura_last_page_${userKey}_${documentId}`, String(clampedPage));
+        localStorage.setItem(`aura_last_page_${documentId}`, String(clampedPage));
+      } catch {}
+    }
+
+    // 2. Debounced database persistence (350ms)
+    if (saveDebounceTimerRef.current) clearTimeout(saveDebounceTimerRef.current);
+    saveDebounceTimerRef.current = setTimeout(() => {
+      fetch(`/api/documents/${documentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_page: clampedPage, last_opened_at: new Date() }),
+      }).catch(console.error);
+    }, 350);
   };
 
   // Auto-hide controls on inactivity
@@ -105,8 +151,16 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     setIsControlsVisible(true);
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
     idleTimeoutRef.current = setTimeout(() => {
-      // Keep visible if a panel is open
-      if (!isAIOpen && !isNotesOpen && !isThumbnailsOpen && !isSearchOpen) {
+      // Keep visible if a panel or modal is open
+      if (
+        !isAIOpen &&
+        !isNotesOpen &&
+        !isThumbnailsOpen &&
+        !isSearchOpen &&
+        !isAudioTutorOpen &&
+        !isCheatSheetOpen &&
+        !isVivaOpen
+      ) {
         setIsControlsVisible(false);
       }
     }, 2800);
@@ -320,6 +374,22 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     }
   };
 
+  const handleUpdateNote = async (id: string, content: string) => {
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, content }),
+      });
+      const data = await res.json();
+      if (data.success && data.note) {
+        setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, content } : n)));
+      }
+    } catch (err) {
+      console.error('Error updating note:', err);
+    }
+  };
+
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center p-4 bg-[var(--bg)]">
@@ -392,7 +462,30 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         onToggleSearch={() => setIsSearchOpen(true)}
         onSetAnnotationTool={setActiveAnnotationTool}
         fileUrl={document.file_url}
+        isAudioTutorOpen={isAudioTutorOpen}
+        onToggleAudioTutor={() => setIsAudioTutorOpen((prev) => !prev)}
+        onOpenCheatSheet={() => setIsCheatSheetOpen(true)}
+        onOpenViva={() => setIsVivaOpen(true)}
+        isBionicReading={isBionicReading}
+        onToggleBionic={() => setIsBionicReading((prev) => !prev)}
       />
+
+      {/* Non-blocking AI degradation notification */}
+      {document.ai_indexing_status === 'failed' && !aiBannerDismissed && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 max-w-lg w-[90%] bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 backdrop-blur-md rounded-2xl px-4 py-2.5 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 shadow-xl animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+            <span>PDF reading and annotations are fully active. Semantic AI indexing is temporarily offline for this file.</span>
+          </div>
+          <button
+            onClick={() => setAiBannerDismissed(true)}
+            className="text-amber-700 dark:text-amber-300 hover:opacity-75 ml-3 font-bold text-sm shrink-0"
+            title="Dismiss notice"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Study Session Widget */}
       <StudySessionBar
@@ -402,14 +495,14 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         isRightSidebarOpen={isAIOpen || isNotesOpen}
       />
 
-      {/* Thumbnails Sidebar */}
+      {/* Thumbnails Drawer */}
       <ThumbnailsBar
         isOpen={isThumbnailsOpen}
         onClose={() => setIsThumbnailsOpen(false)}
-        totalPages={totalPages}
         currentPage={currentPage}
-        onSelectPage={(p) => {
-          saveReadingPosition(p);
+        totalPages={totalPages}
+        onSelectPage={(page) => {
+          saveReadingPosition(page);
           setIsThumbnailsOpen(false);
         }}
       />
@@ -428,12 +521,23 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
           zoom={zoom}
           rotation={rotation}
           isTwoPage={isTwoPage}
+          isBionicReading={isBionicReading}
           activeAnnotationTool={activeAnnotationTool}
           annotations={annotations}
           notes={notes}
           onPageChange={(page, total) => {
-            setCurrentPage(page);
-            setTotalPages(total);
+            if (total && total > 0) {
+              setTotalPages(total);
+              totalPagesRef.current = total;
+              if (document && document.page_count !== total) {
+                fetch(`/api/documents/${documentId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ page_count: total }),
+                }).catch(() => {});
+              }
+            }
+            saveReadingPosition(page);
           }}
           onAddAnnotation={handleAddAnnotation}
           onDeleteAnnotation={handleDeleteAnnotation}
@@ -458,6 +562,9 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
           onMakeFlashcardFromSelection={async (text, pageNumber) => {
             try {
               showToast('Generating flashcard with AI...');
+              const apiKey = typeof window !== 'undefined' ? localStorage.getItem('aura_api_key') || undefined : undefined;
+              const provider = typeof window !== 'undefined' ? localStorage.getItem('aura_ai_provider') || undefined : undefined;
+
               const res = await fetch('/api/ai/generate-flashcards', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -466,6 +573,8 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                   page_number: pageNumber,
                   selected_text: text,
                   count: 1,
+                  apiKey,
+                  provider,
                 }),
               });
               const data = await res.json();
@@ -482,6 +591,9 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
           onMakeMCQFromSelection={async (text, pageNumber) => {
             try {
               showToast('Generating practice question with AI...');
+              const apiKey = typeof window !== 'undefined' ? localStorage.getItem('aura_api_key') || undefined : undefined;
+              const provider = typeof window !== 'undefined' ? localStorage.getItem('aura_ai_provider') || undefined : undefined;
+
               const res = await fetch('/api/ai/generate-questions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -490,6 +602,8 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                   page_number: pageNumber,
                   selected_text: text,
                   count: 1,
+                  apiKey,
+                  provider,
                 }),
               });
               const data = await res.json();
@@ -535,6 +649,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         currentPage={currentPage}
         notes={notes}
         onAddNote={handleAddNote}
+        onUpdateNote={handleUpdateNote}
         onDeleteNote={handleDeleteNote}
         onNavigateToPage={(p) => saveReadingPosition(p)}
         selectedText={contextSelectedText}
@@ -564,6 +679,33 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* NotebookLM-Style Spoken Audio Tutor Bar */}
+      <AudioTutorBar
+        isOpen={isAudioTutorOpen}
+        onClose={() => setIsAudioTutorOpen(false)}
+        documentId={documentId}
+        documentTitle={document.title}
+        currentPage={currentPage}
+      />
+
+      {/* 1-Click High-Yield Cheat Sheet Modal */}
+      <CheatSheetModal
+        isOpen={isCheatSheetOpen}
+        onClose={() => setIsCheatSheetOpen(false)}
+        documentId={documentId}
+        documentTitle={document.title}
+        currentPage={currentPage}
+      />
+
+      {/* Socratic Oral Exam / Viva Mode Modal */}
+      <SocraticVivaModal
+        isOpen={isVivaOpen}
+        onClose={() => setIsVivaOpen(false)}
+        documentId={documentId}
+        documentTitle={document.title}
+        currentPage={currentPage}
       />
 
       {/* Dynamic Toast Feedback Notification */}

@@ -30,6 +30,9 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
       const docsData = await docsRes.json();
       if (docsData.success && docsData.documents?.length > 0) {
         const doc = docsData.documents[0];
+        const apiKey = typeof window !== 'undefined' ? localStorage.getItem('aura_api_key') || undefined : undefined;
+        const provider = typeof window !== 'undefined' ? localStorage.getItem('aura_ai_provider') || undefined : undefined;
+
         await fetch('/api/ai/generate-flashcards', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -38,6 +41,8 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({
             page_number: doc.last_page || 1,
             count: 3,
             saveToDatabase: true,
+            apiKey,
+            provider,
           }),
         });
         onRefresh();

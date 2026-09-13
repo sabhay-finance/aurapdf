@@ -22,9 +22,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedTheme = localStorage.getItem('aura_theme') || 'dark';
-      const storedLevel = (localStorage.getItem('aura_explanation_level') as any) || 'standard';
-      const storedProvider = (localStorage.getItem('aura_ai_provider') as any) || 'local';
       const storedKey = localStorage.getItem('aura_api_key') || '';
+      const storedProvider = (localStorage.getItem('aura_ai_provider') as any) || (storedKey ? 'gemini' : 'local');
+      const storedLevel = (localStorage.getItem('aura_explanation_level') as any) || 'standard';
       const storedLayout = (localStorage.getItem('aura_page_layout') as any) || 'two-page';
 
       setTheme(storedTheme as any);
@@ -183,23 +183,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 onChange={(e) => setProvider(e.target.value as any)}
                 className="w-full px-3 py-2 text-sm rounded-xl border border-black/10 dark:border-white/15 bg-white/50 dark:bg-neutral-800/50 text-neutral-900 dark:text-white outline-none"
               >
-                <option value="local">Local PDF Engine (Grounded Heuristics, No API Key needed)</option>
-                <option value="gemini">Google Gemini 2.0 (High intelligence, requires Key)</option>
-                <option value="openai">OpenAI GPT-4o / Compatible (Requires Key)</option>
+                <option value="gemini">Google Gemini 2.0 (Recommended - Fast, Multi-turn & Hinglish)</option>
+                <option value="local">Local Study Engine (Offline Fallback)</option>
+                <option value="openai">OpenAI GPT-4o / Mini (Requires Key)</option>
               </select>
 
               {provider !== 'local' && (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-neutral-400">
-                    <Key className="w-3 h-3" />
-                    <span>API Key (Stored locally in browser, never logged):</span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-neutral-400">
+                    <div className="flex items-center gap-1.5">
+                      <Key className="w-3 h-3" />
+                      <span>{provider === 'gemini' ? 'Gemini API Key' : 'API Key'}:</span>
+                    </div>
+                    {provider === 'gemini' && (
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-amber-500 hover:underline"
+                      >
+                        Get Free Gemini Key ↗
+                      </a>
+                    )}
                   </div>
                   <input
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Enter API key..."
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-black/10 dark:border-white/15 bg-white/50 dark:bg-neutral-800/50 text-neutral-900 dark:text-white outline-none"
+                    placeholder={provider === 'gemini' ? 'AIzaSy...' : 'sk-...'}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-black/10 dark:border-white/15 bg-white/50 dark:bg-neutral-800/50 text-neutral-900 dark:text-white outline-none font-mono text-xs"
                   />
                 </div>
               )}

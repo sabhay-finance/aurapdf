@@ -6,7 +6,7 @@ import { stat, open } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { Readable } from 'stream';
 import { checkRateLimit, createRateLimitResponse } from '@/lib/rateLimit';
-import { resolveDocumentFilePath } from '@/lib/storage';
+import { storage, resolveDocumentFilePath } from '@/lib/storage';
 
 export async function GET(
   req: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
 
     const { id } = await params;
 
-    // 2. Verify Ownership in Database
+    // 2. Verify Document and Community Visibility in Database
     const document = await db.document.findUnique({
       where: { id },
       select: {
@@ -35,11 +35,18 @@ export async function GET(
         user_id: true,
         title: true,
         file_url: true,
+        storage_path: true,
+        visibility: true,
+        status: true,
       },
     });
 
-    if (!document) {
+    if (!document || document.status === 'removed') {
       return new NextResponse('Document not found', { status: 404 });
+    }
+
+    if (document.visibility !== 'community' && document.user_id !== session.user.id) {
+      return new NextResponse('Unauthorized access to private document', { status: 403 });
     }
 
     const safeTitle = encodeURIComponent(document.title.replace(/[^a-zA-Z0-9_-]/g, '_'));
@@ -52,8 +59,48 @@ export async function GET(
     };
 
     const range = req.headers.get('range');
+    let parsedRange: { start: number; end?: number } | undefined;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : undefined;
+      if (!isNaN(start)) {
+        parsedRange = { start, end };
+      }
+    }
 
-    // 3. First attempt to serve from local disk cache if available
+    // 3. Primary: Serve from StorageManager (Supabase / S3 / Local)
+    try {
+      const storageKey = document.storage_path || `${id}/original.pdf`;
+      const streamResult = await storage.getStream(storageKey, parsedRange);
+
+      const status = parsedRange ? 206 : 200;
+      const headers: Record<string, string> = {
+        ...securityHeaders,
+        'Content-Length': streamResult.contentLength.toString(),
+      };
+
+      if (parsedRange) {
+        const start = parsedRange.start;
+        const end = parsedRange.end !== undefined ? Math.min(parsedRange.end, streamResult.totalSize - 1) : streamResult.totalSize - 1;
+        headers['Content-Range'] = `bytes ${start}-${end}/${streamResult.totalSize}`;
+      }
+
+      const body = Buffer.isBuffer(streamResult.body) || streamResult.body instanceof Uint8Array
+        ? (streamResult.body as any)
+        : (streamResult.body instanceof Readable
+            ? (Readable.toWeb(streamResult.body) as ReadableStream)
+            : streamResult.body);
+
+      return new NextResponse(body, {
+        status,
+        headers,
+      });
+    } catch {
+      // Continue to fallback paths if storage manager stream fails
+    }
+
+    // 4. Secondary fallback: local disk cache
     const resolvedPath = resolveDocumentFilePath(document.file_url);
     if (resolvedPath) {
       try {
@@ -104,7 +151,7 @@ export async function GET(
       }
     }
 
-    // 4. Fallback to database-backed PDF binary storage
+    // 5. Tertiary fallback: database-backed PDF binary (legacy documents)
     const docFile = await (db as any).documentFile.findUnique({
       where: { document_id: id },
       select: { data: true },
@@ -120,7 +167,6 @@ export async function GET(
 
     const fileSize = fileBuffer.length;
 
-    // Validate magic bytes (%PDF-)
     if (fileSize >= 5) {
       const magic = fileBuffer.subarray(0, 5).toString('ascii');
       if (magic !== '%PDF-') {
@@ -128,7 +174,6 @@ export async function GET(
       }
     }
 
-    // Handle range request for database buffer
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -155,7 +200,6 @@ export async function GET(
       });
     }
 
-    // Return full PDF buffer
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {

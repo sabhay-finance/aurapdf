@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ['pdfjs-dist'],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '100mb',
+    },
+  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
@@ -25,7 +30,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            value: 'camera=(), microphone=(self), geolocation=()',
           },
           {
             key: 'Content-Security-Policy',
@@ -33,9 +38,9 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://accounts.google.com https://apis.google.com",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.googleusercontent.com",
+              "img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.googleusercontent.com https://*.supabase.co",
               "font-src 'self' data:",
-              "connect-src 'self' https://generativelanguage.googleapis.com https://accounts.google.com https://oauth2.googleapis.com",
+              "connect-src 'self' https://generativelanguage.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://*.supabase.co wss://*.supabase.co",
               "frame-src 'self' https://accounts.google.com",
               "worker-src 'self' blob:",
               "object-src 'none'",

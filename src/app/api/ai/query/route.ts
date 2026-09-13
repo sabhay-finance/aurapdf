@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       explanation_level = 'standard',
       apiKey,
       provider,
+      history,
     } = body;
 
     if (!document_id || !query) {
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
       selectedText: selected_text,
       chunks: relevantChunks,
       explanationLevel: explanation_level,
+      history: Array.isArray(history) ? history : undefined,
     });
 
     return NextResponse.json({

@@ -10,6 +10,14 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getStorageConfig } from './env';
+import {
+  isSupabaseConfigured,
+  uploadCommunityPdf,
+  downloadCommunityPdf,
+  getCommunityPdfSignedUrl,
+  deleteCommunityPdf,
+  ensureCommunityBucket,
+} from './supabaseServer';
 
 export interface StorageFileResult {
   key: string;
@@ -31,17 +39,44 @@ export function getStorageUploadsDir(): string {
 }
 
 export function resolveDocumentFilePath(fileUrl: string): string | null {
+  if (!fileUrl) return null;
   const filename = path.basename(fileUrl);
+
+  // Extract UUID if present in path like "cc18a35e-cf81-4b52-8611-80d85817c40f/original.pdf" or "/api/documents/cc18a35e-.../file"
+  const uuidMatch = fileUrl.match(/([a-f0-9-]{36})/i);
+  const docId = uuidMatch ? uuidMatch[1] : null;
+
   const candidates = [
-    path.join('/tmp', 'storage', 'uploads', filename),
+    // 1. Subdirectory {docId}/original.pdf (preferred for modern uploads)
+    ...(docId
+      ? [
+          path.join(getStorageUploadsDir(), docId, 'original.pdf'),
+          path.join(process.cwd(), 'storage', 'uploads', docId, 'original.pdf'),
+          path.join('/tmp', 'storage', 'uploads', docId, 'original.pdf'),
+        ]
+      : []),
+
+    // 2. Exact path inside storage/uploads (if it's a file)
+    path.join(getStorageUploadsDir(), fileUrl),
+    path.join(process.cwd(), 'storage', 'uploads', fileUrl),
+    path.join('/tmp', 'storage', 'uploads', fileUrl),
+
+    // 3. Basename inside storage/uploads
+    path.join(getStorageUploadsDir(), filename),
     path.join(process.cwd(), 'storage', 'uploads', filename),
+    path.join('/tmp', 'storage', 'uploads', filename),
+
+    // 4. Public files / samples
+    path.join(process.cwd(), 'public', fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl),
     path.join(process.cwd(), 'public', 'samples', filename),
   ];
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {}
   }
 
   return null;
@@ -54,18 +89,19 @@ class LocalStorageProvider {
     this.baseDir = getStorageUploadsDir();
   }
 
-  private async ensureDir() {
-    await mkdir(this.baseDir, { recursive: true });
+  private async ensureDir(targetPath?: string) {
+    const dir = targetPath ? path.dirname(targetPath) : this.baseDir;
+    await mkdir(dir, { recursive: true });
   }
 
   async upload(key: string, buffer: Buffer): Promise<StorageFileResult> {
-    await this.ensureDir();
     const filePath = path.join(this.baseDir, key);
+    await this.ensureDir(filePath);
     await writeFile(filePath, buffer);
     return { key, size: buffer.byteLength };
   }
 
-  async getStream(key: string, range?: { start: number; end: number }): Promise<StorageStreamResult> {
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStreamResult> {
     const resolved = resolveDocumentFilePath(key);
     const filePath = resolved || path.join(this.baseDir, key);
     if (!fs.existsSync(filePath)) {
@@ -79,7 +115,7 @@ class LocalStorageProvider {
     let end = totalSize - 1;
     if (range) {
       start = range.start;
-      end = Math.min(range.end, totalSize - 1);
+      end = range.end !== undefined && !isNaN(range.end) ? Math.min(range.end, totalSize - 1) : totalSize - 1;
     }
 
     const stream = fs.createReadStream(filePath, { start, end });
@@ -157,8 +193,10 @@ class S3StorageProvider {
     return { key, size: buffer.byteLength };
   }
 
-  async getStream(key: string, range?: { start: number; end: number }): Promise<StorageStreamResult> {
-    const rangeHeader = range ? `bytes=${range.start}-${range.end}` : undefined;
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStreamResult> {
+    const rangeHeader = range
+      ? `bytes=${range.start}-${range.end !== undefined && !isNaN(range.end) ? range.end : ''}`
+      : undefined;
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -221,12 +259,61 @@ class S3StorageProvider {
   }
 }
 
+class SupabaseStorageProvider {
+  async upload(key: string, buffer: Buffer, contentType = 'application/pdf'): Promise<StorageFileResult> {
+    const documentId = key.replace(/\/original\.pdf$/, '');
+    const { storagePath, size } = await uploadCommunityPdf(documentId, buffer, contentType);
+    return { key: storagePath, size };
+  }
+
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStreamResult> {
+    const documentId = key.replace(/\/original\.pdf$/, '');
+    const { buffer, contentType, size } = await downloadCommunityPdf(documentId);
+
+    let start = 0;
+    let end = size - 1;
+    if (range) {
+      start = range.start;
+      end = range.end !== undefined && !isNaN(range.end) ? Math.min(range.end, size - 1) : size - 1;
+    }
+
+    const chunk = buffer.subarray(start, end + 1);
+    return {
+      body: chunk as any,
+      contentLength: chunk.length,
+      totalSize: size,
+      contentType,
+    };
+  }
+
+  async getSignedUrl(key: string, expiresIn = 3600, downloadFilename?: string): Promise<string> {
+    const documentId = key.replace(/\/original\.pdf$/, '');
+    return getCommunityPdfSignedUrl(documentId, expiresIn, downloadFilename);
+  }
+
+  async delete(key: string): Promise<boolean> {
+    const documentId = key.replace(/\/original\.pdf$/, '');
+    return deleteCommunityPdf(documentId);
+  }
+
+  async checkHealth(): Promise<{ status: 'ok' | 'warning' | 'error'; message?: string }> {
+    const ok = await ensureCommunityBucket();
+    return ok
+      ? { status: 'ok' }
+      : { status: 'warning', message: 'Could not connect to Supabase community-pdfs bucket' };
+  }
+}
+
 // Unified Storage API
 class StorageManager {
   private local = new LocalStorageProvider();
   private s3: S3StorageProvider | null = null;
+  private supabase = new SupabaseStorageProvider();
 
   private getProvider() {
+    if (isSupabaseConfigured()) {
+      return this.supabase;
+    }
     const config = getStorageConfig();
     if (config.provider === 's3') {
       if (!this.s3) {
@@ -237,7 +324,8 @@ class StorageManager {
     return this.local;
   }
 
-  get providerName(): 'local' | 's3' {
+  get providerName(): 'supabase' | 's3' | 'local' {
+    if (isSupabaseConfigured()) return 'supabase';
     return getStorageConfig().provider;
   }
 
@@ -245,11 +333,14 @@ class StorageManager {
     return this.getProvider().upload(key, buffer, contentType);
   }
 
-  async getStream(key: string, range?: { start: number; end: number }): Promise<StorageStreamResult> {
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStreamResult> {
     return this.getProvider().getStream(key, range);
   }
 
-  async getSignedUrl(key: string, expiresIn = 900): Promise<string> {
+  async getSignedUrl(key: string, expiresIn = 900, downloadFilename?: string): Promise<string> {
+    if (isSupabaseConfigured()) {
+      return this.supabase.getSignedUrl(key, expiresIn, downloadFilename);
+    }
     return this.getProvider().getSignedUrl(key, expiresIn);
   }
 
