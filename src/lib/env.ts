@@ -26,20 +26,27 @@ export function getAppEnvironment(): AppEnvironment {
  * 4. Localhost fallback for local development (http://localhost:3000)
  */
 export function getBaseUrl(): string {
-  // Explicitly configured URL
-  if (process.env.NEXTAUTH_URL) {
+  // If explicitly configured with a non-localhost custom domain, use it
+  if (process.env.NEXTAUTH_URL && !process.env.NEXTAUTH_URL.includes('localhost')) {
     return process.env.NEXTAUTH_URL.replace(/\/$/, '');
   }
-  if (process.env.AUTH_URL) {
+  if (process.env.AUTH_URL && !process.env.AUTH_URL.includes('localhost')) {
     return process.env.AUTH_URL.replace(/\/$/, '');
   }
-  if (process.env.NEXT_PUBLIC_APP_URL) {
+  if (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')) {
     return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
   }
 
-  // Vercel deployment host (Preview branches or Vercel default domain)
+  // Vercel deployment hosts (Automatically provided by Vercel platform)
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
+  }
+
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/$/, '');
   }
 
   // Default local development fallback

@@ -7,3 +7,4 @@ prisma/*.db-shm
 prisma/*.db-wal
 .next/
 *.local
+.env
