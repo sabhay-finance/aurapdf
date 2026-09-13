@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 
+import { ensureDatabaseTables } from './dbInit';
+
 function getResolvedDatabaseUrl(): string {
   if (process.env.DATABASE_URL) {
     return process.env.DATABASE_URL;
@@ -31,7 +33,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const db =
+const rawDb =
   globalForPrisma.prisma ??
   new PrismaClient({
     datasources: {
@@ -42,5 +44,41 @@ export const db =
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = rawDb;
+
+let initPromise: Promise<void> | null = null;
+function ensureInit() {
+  if (!initPromise) {
+    initPromise = ensureDatabaseTables(rawDb);
+  }
+  return initPromise;
+}
+
+export const db: PrismaClient = new Proxy(rawDb, {
+  get(target, prop) {
+    const orig = (target as any)[prop];
+    if (typeof orig === 'function') {
+      return async (...args: any[]) => {
+        await ensureInit();
+        return orig.apply(target, args);
+      };
+    }
+    if (typeof orig === 'object' && orig !== null) {
+      return new Proxy(orig, {
+        get(modelTarget, modelProp) {
+          const modelMethod = modelTarget[modelProp];
+          if (typeof modelMethod === 'function') {
+            return async (...args: any[]) => {
+              await ensureInit();
+              return modelMethod.apply(modelTarget, args);
+            };
+          }
+          return modelMethod;
+        },
+      });
+    }
+    return orig;
+  },
+}) as PrismaClient;
+
 export default db;
