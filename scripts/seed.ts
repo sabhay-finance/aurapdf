@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -348,6 +350,50 @@ async function main() {
         color: 'rgba(245, 205, 71, 0.35)',
       },
     });
+  }
+
+  // 9. Seed / Backfill DocumentFile binary table
+  const samplePdfPath = path.join(process.cwd(), 'public', 'samples', 'equity_valuation.pdf');
+  if (fs.existsSync(samplePdfPath)) {
+    const sampleBuffer = fs.readFileSync(samplePdfPath);
+    await prisma.documentFile.upsert({
+      where: { document_id: document.id },
+      update: { data: sampleBuffer },
+      create: {
+        document_id: document.id,
+        data: sampleBuffer,
+      },
+    });
+    console.log('   📄 Seeded binary for cfa-equity-valuation.');
+  }
+
+  // Backfill any existing library documents from storage/uploads
+  const allDocs = await prisma.document.findMany({
+    include: { file_data: { select: { id: true } } },
+  });
+
+  for (const doc of allDocs) {
+    if (!doc.file_data) {
+      const filename = path.basename(doc.file_url);
+      const candidates = [
+        path.join(process.cwd(), 'storage', 'uploads', filename),
+        path.join(process.cwd(), 'public', 'samples', filename),
+        path.join('/tmp', 'storage', 'uploads', filename),
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand)) {
+          const buf = fs.readFileSync(cand);
+          await prisma.documentFile.create({
+            data: {
+              document_id: doc.id,
+              data: buf,
+            },
+          });
+          console.log(`   📦 Backfilled binary into DB for doc "${doc.title}" (${buf.byteLength} bytes)`);
+          break;
+        }
+      }
+    }
   }
 
   console.log('Seed completed successfully!');

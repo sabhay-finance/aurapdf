@@ -84,6 +84,7 @@ model Document {
   folder         String?          @default("General")
 
   user           User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  file_data      DocumentFile?
   pages          DocumentPage[]
   chunks         DocumentChunk[]
   annotations    Annotation[]
@@ -95,6 +96,17 @@ model Document {
 
   @@index([user_id])
   @@map("documents")
+}
+
+model DocumentFile {
+  id          String   @id @default(uuid())
+  document_id String   @unique
+  data        Bytes
+  created_at  DateTime @default(now())
+
+  document    Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@map("document_files")
 }
 
 model DocumentPage {

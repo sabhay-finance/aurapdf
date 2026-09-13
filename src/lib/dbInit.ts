@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Ensures that all necessary tables and default data exist.
@@ -7,8 +9,9 @@ import { PrismaClient } from '@prisma/client';
  */
 export async function ensureDatabaseTables(client: PrismaClient): Promise<void> {
   try {
-    // Probe if the primary documents table already exists
+    // Probe if the primary documents and document_files tables already exist
     await client.$queryRaw`SELECT 1 FROM "documents" LIMIT 1`;
+    await client.$queryRaw`SELECT 1 FROM "document_files" LIMIT 1`;
     return;
   } catch {
     // Database is fresh or uninitialized: create schema tables
@@ -16,14 +19,22 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
 
   console.log('📦 AuraPDF: Initializing serverless database schema...');
 
+  const isPostgres = Boolean(
+    process.env.DATABASE_URL?.startsWith('postgres://') ||
+    process.env.DATABASE_URL?.startsWith('postgresql://')
+  );
+  const blobType = isPostgres ? 'BYTEA' : 'BLOB';
+  const dateType = isPostgres ? 'TIMESTAMP' : 'DATETIME';
+  const boolDefault = isPostgres ? 'FALSE' : '0';
+
   const statements = [
     `CREATE TABLE IF NOT EXISTS "users" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "email" TEXT UNIQUE,
-      "email_verified" DATETIME,
+      "email_verified" ${dateType},
       "name" TEXT,
       "image" TEXT,
-      "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP
     );`,
     `CREATE TABLE IF NOT EXISTS "documents" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -32,13 +43,20 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
       "file_url" TEXT NOT NULL,
       "file_size" INTEGER NOT NULL DEFAULT 0,
       "page_count" INTEGER NOT NULL DEFAULT 0,
-      "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updated_at" DATETIME NOT NULL,
-      "last_opened_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at" ${dateType} NOT NULL,
+      "last_opened_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "last_page" INTEGER NOT NULL DEFAULT 1,
-      "is_favorite" BOOLEAN NOT NULL DEFAULT 0,
+      "is_favorite" BOOLEAN NOT NULL DEFAULT ${boolDefault},
       "folder" TEXT DEFAULT 'General',
       CONSTRAINT "documents_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );`,
+    `CREATE TABLE IF NOT EXISTS "document_files" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "document_id" TEXT NOT NULL UNIQUE,
+      "data" ${blobType} NOT NULL,
+      "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "document_files_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents" ("id") ON DELETE CASCADE ON UPDATE CASCADE
     );`,
     `CREATE TABLE IF NOT EXISTS "document_pages" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -201,6 +219,20 @@ export async function ensureDatabaseTables(client: PrismaClient): Promise<void> 
         folder: 'CFA Exam Prep',
       },
     });
+
+    // Seed sample PDF binary into document_files table
+    const samplePath = path.join(process.cwd(), 'public', 'samples', 'equity_valuation.pdf');
+    if (fs.existsSync(samplePath)) {
+      const pdfBytes = fs.readFileSync(samplePath);
+      await (client as any).documentFile.upsert({
+        where: { document_id: 'cfa-equity-valuation' },
+        update: { data: pdfBytes },
+        create: {
+          document_id: 'cfa-equity-valuation',
+          data: pdfBytes,
+        },
+      });
+    }
 
     console.log('✅ AuraPDF: Serverless database schema and sample documents seeded successfully.');
   } catch (err: any) {

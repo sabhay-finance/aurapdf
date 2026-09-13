@@ -144,7 +144,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 </p>
                 <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                  Study Mode
+                  Shared Cloud Library
                 </p>
               </div>
             </div>

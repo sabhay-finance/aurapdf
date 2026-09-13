@@ -104,9 +104,15 @@ function LibraryContent() {
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-neutral-900 dark:text-white">
               {getGreeting()}
             </h1>
-            <p className="text-sm text-neutral-500 mt-1">
-              Pick up where you left off or explore new concepts.
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <p className="text-sm text-neutral-500">
+                Pick up where you left off or explore new concepts.
+              </p>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Shared Cloud Library
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">

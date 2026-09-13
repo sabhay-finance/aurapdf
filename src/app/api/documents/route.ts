@@ -98,22 +98,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Save to private object storage (outside public directory)
+    // 4. Save to private object storage (optional disk cache if available)
     const storageKey = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    await storage.upload(storageKey, buffer, 'application/pdf');
+    try {
+      await storage.upload(storageKey, buffer, 'application/pdf');
+    } catch (storageErr) {
+      console.warn('LocalStorage save skipped (serverless environment):', storageErr);
+    }
 
-    // 5. Create document in database with authenticated streaming URL
+    // 5. Create document in database with persistent binary storage
     const docId = crypto.randomUUID();
     const document = await db.document.create({
       data: {
         id: docId,
         user_id: session.user.id,
         title,
-        file_url: storageKey, // Store safe storage identifier
+        file_url: storageKey,
         file_size: buffer.byteLength,
         page_count: 1,
         last_page: 1,
         folder: 'Uploaded',
+        file_data: {
+          create: {
+            data: buffer,
+          },
+        },
       },
     });
 

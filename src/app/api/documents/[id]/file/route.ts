@@ -42,50 +42,93 @@ export async function GET(
       return new NextResponse('Document not found', { status: 404 });
     }
 
-    // 3. Resolve private storage path
-    const resolvedPath = resolveDocumentFilePath(document.file_url);
-    if (!resolvedPath) {
-      return new NextResponse('Stored document file not found', { status: 404 });
-    }
-    const filePath = resolvedPath;
-
-    let fileStat;
-    try {
-      fileStat = await stat(filePath);
-    } catch {
-      return new NextResponse('Stored document file not found', { status: 404 });
-    }
-
-    const fileSize = fileStat.size;
-
-    // 4. Validate Magic Bytes: ensure file starts with '%PDF-'
-    try {
-      const fileHandle = await open(filePath, 'r');
-      const magicBuffer = Buffer.alloc(5);
-      await fileHandle.read(magicBuffer, 0, 5, 0);
-      await fileHandle.close();
-
-      if (magicBuffer.toString('ascii') !== '%PDF-') {
-        return new NextResponse('File is not a valid PDF document', { status: 400 });
-      }
-    } catch (readErr) {
-      console.error('Error validating PDF magic bytes:', readErr);
-      return new NextResponse('Unable to verify document integrity', { status: 500 });
-    }
-
-    const range = req.headers.get('range');
     const safeTitle = encodeURIComponent(document.title.replace(/[^a-zA-Z0-9_-]/g, '_'));
-
     const securityHeaders = {
       'Content-Type': 'application/pdf',
       'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'private, no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
+      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
       'Content-Disposition': `inline; filename="${safeTitle}.pdf"`,
       'Accept-Ranges': 'bytes',
     };
 
-    // 5. Handle HTTP Range Requests for PDF.js streaming
+    const range = req.headers.get('range');
+
+    // 3. First attempt to serve from local disk cache if available
+    const resolvedPath = resolveDocumentFilePath(document.file_url);
+    if (resolvedPath) {
+      try {
+        const fileStat = await stat(resolvedPath);
+        const fileSize = fileStat.size;
+
+        if (fileSize > 0) {
+          const fileHandle = await open(resolvedPath, 'r');
+          const magicBuffer = Buffer.alloc(5);
+          await fileHandle.read(magicBuffer, 0, 5, 0);
+          await fileHandle.close();
+
+          if (magicBuffer.toString('ascii') === '%PDF-') {
+            if (range) {
+              const parts = range.replace(/bytes=/, '').split('-');
+              const start = parseInt(parts[0], 10);
+              const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+              if (!isNaN(start) && start < fileSize && end < fileSize && start <= end) {
+                const chunkSize = end - start + 1;
+                const fileStream = createReadStream(resolvedPath, { start, end });
+                const webStream = Readable.toWeb(fileStream) as ReadableStream;
+
+                return new NextResponse(webStream, {
+                  status: 206,
+                  headers: {
+                    ...securityHeaders,
+                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                    'Content-Length': chunkSize.toString(),
+                  },
+                });
+              }
+            }
+
+            const fileStream = createReadStream(resolvedPath);
+            const webStream = Readable.toWeb(fileStream) as ReadableStream;
+            return new NextResponse(webStream, {
+              status: 200,
+              headers: {
+                ...securityHeaders,
+                'Content-Length': fileSize.toString(),
+              },
+            });
+          }
+        }
+      } catch {
+        // Fallback to database binary
+      }
+    }
+
+    // 4. Fallback to database-backed PDF binary storage
+    const docFile = await (db as any).documentFile.findUnique({
+      where: { document_id: id },
+      select: { data: true },
+    });
+
+    if (!docFile || !docFile.data) {
+      return new NextResponse('Stored document file not found', { status: 404 });
+    }
+
+    const fileBuffer = Buffer.isBuffer(docFile.data)
+      ? docFile.data
+      : Buffer.from(docFile.data);
+
+    const fileSize = fileBuffer.length;
+
+    // Validate magic bytes (%PDF-)
+    if (fileSize >= 5) {
+      const magic = fileBuffer.subarray(0, 5).toString('ascii');
+      if (magic !== '%PDF-') {
+        return new NextResponse('File is not a valid PDF document', { status: 400 });
+      }
+    }
+
+    // Handle range request for database buffer
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -101,25 +144,19 @@ export async function GET(
         });
       }
 
-      const chunkSize = end - start + 1;
-      const fileStream = createReadStream(filePath, { start, end });
-      const webStream = Readable.toWeb(fileStream) as ReadableStream;
-
-      return new NextResponse(webStream, {
+      const chunk = fileBuffer.subarray(start, end + 1);
+      return new NextResponse(chunk, {
         status: 206,
         headers: {
           ...securityHeaders,
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Content-Length': chunkSize.toString(),
+          'Content-Length': chunk.length.toString(),
         },
       });
     }
 
-    // Full file stream
-    const fileStream = createReadStream(filePath);
-    const webStream = Readable.toWeb(fileStream) as ReadableStream;
-
-    return new NextResponse(webStream, {
+    // Return full PDF buffer
+    return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         ...securityHeaders,
